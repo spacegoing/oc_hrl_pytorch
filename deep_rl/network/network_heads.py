@@ -84,7 +84,7 @@ class OptionCriticNet(nn.Module, BaseNet):
     def forward(self, x):
         phi = self.body(tensor(x))
         q = self.fc_q(phi)
-        beta = F.sigmoid(self.fc_beta(phi))
+        beta = F.softmax(self.fc_beta(phi))
         pi = self.fc_pi(phi)
         pi = pi.view(-1, self.num_options, self.action_dim)
         log_pi = F.log_softmax(pi, dim=-1)

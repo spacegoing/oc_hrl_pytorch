@@ -43,7 +43,7 @@ class OptionCriticAgent(BaseAgent):
 
       dist = torch.distributions.Categorical(probs=pi_option)
       options = dist.sample()
-      dist = torch.distributions.Categorical(probs=pi_hat_option)
+      dist = torch.distributions.Categorical(logits=pi_hat_option)
       options_hat = dist.sample()
 
       options = torch.where(is_intial_states, options, options_hat)
