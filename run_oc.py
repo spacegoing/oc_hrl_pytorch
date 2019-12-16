@@ -30,16 +30,16 @@ def option_critic_feature(**kwargs):
     config = Config()
     config.merge(kwargs)
 
-    config.num_workers = 5
+    config.num_workers = 6
     config.task_fn = lambda: Task(config.game, num_envs=config.num_workers)
     config.eval_env = Task(config.game)
     config.optimizer_fn = lambda params: torch.optim.RMSprop(params, 0.001)
     # FCBody: 2 layers FC net with ReLU gate. (4,64 -> 64,64)
-    config.network_fn = lambda: OptionCriticNet(FCBody(config.state_dim), config.action_dim, num_options=2)
+    config.network_fn = lambda: OptionCriticNet(FCBody(config.state_dim), config.action_dim, num_options=7)
     config.random_option_prob = LinearSchedule(1.0, 0.1, 1e4)
     config.discount = 0.99
     config.target_network_update_freq = 200
-    config.rollout_length = 5
+    config.rollout_length = 10
     config.termination_regularizer = 0.01
     config.entropy_weight = 0.01
     config.gradient_clip = 5
