@@ -7,14 +7,14 @@
 from deep_rl import *
 
 
-def show_uncontained_keys():
+def show_uncontained_keys(config):
     contained_keys = set(config.__dict__.keys())
     uncontained_keys = dir(config)
     uncontained_keys = {k for k in uncontained_keys if not k.startswith('_')}
     missing_keys = uncontained_keys - contained_keys
     print(missing_keys)
 
-def sort_config_keys():
+def sort_config_keys(config):
     kv = config.__dict__
     sk = sorted(kv)
     sorted_kv = ['%s: %s'%(k, kv[k]) for k in sk]
@@ -55,7 +55,7 @@ def option_critic_pixel(**kwargs):
     config.task_fn = lambda: Task(config.game, num_envs=config.num_workers)
     config.eval_env = Task(config.game)
     config.num_workers = 16
-    config.optimizer_fn = lambda params: torch.optim.RMSprop(params, lr=1e-4, alpha=0.99, eps=1e-5)
+    config.optimizer_fn = lambda params: torch.optim.RMSprop(params, lr=7e-4, alpha=0.99, eps=1e-5)
     config.network_fn = lambda: OptionCriticNet(NatureConvBody(), config.action_dim, num_options=4)
     config.random_option_prob = LinearSchedule(0.1)
     config.state_normalizer = ImageNormalizer()
@@ -64,7 +64,7 @@ def option_critic_pixel(**kwargs):
     config.target_network_update_freq = 10000
     config.rollout_length = 5
     config.gradient_clip = 5
-    config.max_steps = int(2e7)
+    config.max_steps = int(10e7)
     config.entropy_weight = 0.01
     config.termination_regularizer = 0.01
     run_steps(OptionCriticAgent(config))
@@ -162,7 +162,7 @@ if __name__ == '__main__':
     # categorical_dqn_feature(game=game)
     # a2c_feature(game=game)
     # n_step_dqn_feature(game=game)
-    option_critic_feature(game=game)
+    # option_critic_feature(game=game)
     # ppo_feature(game=game)
 
     # game = 'HalfCheetah-v2'
@@ -173,10 +173,11 @@ if __name__ == '__main__':
     # td3_continuous(game=game)
 
     game = 'BreakoutNoFrameskip-v4'
+    game = 'MsPacmanNoFrameskip-v0'
     # dqn_pixel(game=game)
     # quantile_regression_dqn_pixel(game=game)
     # categorical_dqn_pixel(game=game)
     # a2c_pixel(game=game)
     # n_step_dqn_pixel(game=game)
-    # option_critic_pixel(game=game)
+    option_critic_pixel(game=game)
     # ppo_pixel(game=game)
