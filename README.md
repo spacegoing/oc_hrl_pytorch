@@ -1,3 +1,12 @@
+# Spacegoing Implementation of Option-Crictic Framework
+
+This repo is based on https://github.com/ShangtongZhang with
+following features:
+
+- recursive networks support
+- TensorboardX compatible with basline / stable-baselines
+
+
 # DeepRL
 
 > If you have any question or want to report a bug, please open an issue instead of emailing me directly.
