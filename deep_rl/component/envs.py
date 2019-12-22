@@ -59,15 +59,20 @@ class OriginalReturnWrapper(gym.Wrapper):
     def __init__(self, env):
         gym.Wrapper.__init__(self, env)
         self.total_rewards = 0
+        self.total_len = 0
 
     def step(self, action):
         obs, reward, done, info = self.env.step(action)
         self.total_rewards += reward
+        self.total_len += 1
         if done:
             info['episodic_return'] = self.total_rewards
+            info['episodic_length'] = self.total_len
             self.total_rewards = 0
+            self.total_len = 0
         else:
             info['episodic_return'] = None
+            info['episodic_length'] = None
         return obs, reward, done, info
 
     def reset(self):

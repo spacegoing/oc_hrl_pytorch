@@ -6,6 +6,51 @@ following features:
 - recursive networks support
 - TensorboardX compatible with basline / stable-baselines
 
+## Annotations ##
+
+```python
+
+  [
+      'a', 'adv', 'beta', 'beta_adv', 'ent', 'eps', 'init', 'log_pi',
+      'log_pi_a', 'm', 'mean', 'o', 'pi', 'prev_o', 'q', 'q_a', 'r', 'ret', 's',
+      'v'
+  ]
+
+```
+
+
+## TensorboardX Metrics ##
+
+### Episode ###
+
+``` text
+ep_len_mean:  safe_mean([ep_info['l'] for ep_info in ep_info_buf])
+ep_reward_mean: safe_mean([ep_info['r'] for ep_info in ep_info_buf])
+```
+
+### Input Info ###
+
+``` text
+'advantage': tf.reduce_mean(self.advs_ph)
+'discounted_rewards': tf.reduce_mean(self.rewards_ph)
+'learning_rate': tf.reduce_mean(self.learning_rate_ph)
+'old_neglog_action_probability': tf.reduce_mean(self.old_neglog_pac_ph)
+'old_value_pred': tf.reduce_mean(self.old_vpred_ph))
+'clip_range': tf.reduce_mean(self.clip_range_ph)
+'clip_range_vf': tf.reduce_mean(self.clip_range_vf_ph)
+```
+
+
+### Loss ###
+
+``` text
+'loss': loss
+'entropy_loss': self.entropy
+'policy_gradient_loss': self.pg_loss
+'value_function_loss': self.vf_loss
+'approximate_kullback-leibler': self.approxkl
+'clip_factor': self.clipfrac
+```
 
 # DeepRL
 

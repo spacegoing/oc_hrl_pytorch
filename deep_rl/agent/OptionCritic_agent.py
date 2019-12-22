@@ -112,14 +112,33 @@ class OptionCriticAgent(BaseAgent):
     q, beta, log_pi, ret, adv, beta_adv, ent, option, action, initial_states, prev_o = \
         storage.cat(['q', 'beta', 'log_pi', 'ret', 'adv', 'beta_adv', 'ent', 'o', 'a', 'init', 'prev_o'])
 
+    self.logger.add_scalar('input_info/return',
+                           ret.mean().detach(), self.total_steps)
+    self.logger.add_scalar('input_info/adv_o',
+                           adv.mean().detach(), self.total_steps)
+    self.logger.add_scalar('input_info/adv_beta',
+                           beta_adv.mean().detach(), self.total_steps)
+
     q_loss = (q.gather(1, option) - ret.detach()).pow(2).mul(0.5).mean()
     pi_loss = -(log_pi.gather(1, action) *
                 adv.detach()) - config.entropy_weight * ent
     pi_loss = pi_loss.mean()
     beta_loss = (beta.gather(1, prev_o) * beta_adv.detach() *
                  (1 - initial_states)).mean()
+    total_loss = pi_loss + q_loss + beta_loss
+
+    self.logger.add_scalar('loss/total_loss', total_loss.detach(),
+                           self.total_steps)
+    self.logger.add_scalar('loss/entropy_loss',
+                           ent.mean().detach(), self.total_steps)
+    self.logger.add_scalar('loss/option_loss', pi_loss.detach(),
+                           self.total_steps)
+    self.logger.add_scalar('loss/q_omega_loss', q_loss.detach(),
+                           self.total_steps)
+    self.logger.add_scalar('loss/beta_loss', beta_loss.detach(),
+                           self.total_steps)
 
     self.optimizer.zero_grad()
-    (pi_loss + q_loss + beta_loss).backward()
+    total_loss.backward()
     nn.utils.clip_grad_norm_(self.network.parameters(), config.gradient_clip)
     self.optimizer.step()
