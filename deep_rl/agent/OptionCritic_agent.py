@@ -112,12 +112,14 @@ class OptionCriticAgent(BaseAgent):
     q, beta, log_pi, ret, adv, beta_adv, ent, option, action, initial_states, prev_o = \
         storage.cat(['q', 'beta', 'log_pi', 'ret', 'adv', 'beta_adv', 'ent', 'o', 'a', 'init', 'prev_o'])
 
-    self.logger.add_scalar('input_info/return',
-                           ret.mean().detach(), self.total_steps)
-    self.logger.add_scalar('input_info/adv_o',
-                           adv.mean().detach(), self.total_steps)
-    self.logger.add_scalar('input_info/adv_beta',
-                           beta_adv.mean().detach(), self.total_steps)
+
+    if config.log_interval and not self.total_steps % config.log_interval:
+      self.logger.add_scalar('input_info/return',
+                            ret.mean().detach(), self.total_steps)
+      self.logger.add_scalar('input_info/adv_o',
+                            adv.mean().detach(), self.total_steps)
+      self.logger.add_scalar('input_info/adv_beta',
+                            beta_adv.mean().detach(), self.total_steps)
 
     q_loss = (q.gather(1, option) - ret.detach()).pow(2).mul(0.5).mean()
     pi_loss = -(log_pi.gather(1, action) *
@@ -127,16 +129,18 @@ class OptionCriticAgent(BaseAgent):
                  (1 - initial_states)).mean()
     total_loss = pi_loss + q_loss + beta_loss
 
-    self.logger.add_scalar('loss/total_loss', total_loss.detach(),
-                           self.total_steps)
-    self.logger.add_scalar('loss/entropy_loss',
-                           ent.mean().detach(), self.total_steps)
-    self.logger.add_scalar('loss/option_loss', pi_loss.detach(),
-                           self.total_steps)
-    self.logger.add_scalar('loss/q_omega_loss', q_loss.detach(),
-                           self.total_steps)
-    self.logger.add_scalar('loss/beta_loss', beta_loss.detach(),
-                           self.total_steps)
+
+    if config.log_interval and not self.total_steps % config.log_interval:
+      self.logger.add_scalar('loss/total_loss', total_loss.detach(),
+                            self.total_steps)
+      self.logger.add_scalar('loss/entropy_loss',
+                            ent.mean().detach(), self.total_steps)
+      self.logger.add_scalar('loss/option_loss', pi_loss.detach(),
+                            self.total_steps)
+      self.logger.add_scalar('loss/q_omega_loss', q_loss.detach(),
+                            self.total_steps)
+      self.logger.add_scalar('loss/beta_loss', beta_loss.detach(),
+                            self.total_steps)
 
     self.optimizer.zero_grad()
     total_loss.backward()
