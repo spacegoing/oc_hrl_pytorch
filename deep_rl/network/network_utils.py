@@ -13,6 +13,7 @@ from ..utils import *
 
 class BaseNet:
     def __init__(self):
+        self.is_recur = False
         pass
 
 
