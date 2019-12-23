@@ -25,7 +25,7 @@ def sort_config_keys(config):
 # Option-Critic
 def option_critic_feature(**kwargs):
 
-  kwargs = {'game': 'CartPole-v0'}
+  # kwargs = {'game': 'CartPole-v0'}
 
   generate_tag(kwargs)
   kwargs.setdefault('log_level', 0)
@@ -136,8 +136,9 @@ def ppo_continuous(**kwargs):
   config = Config()
   config.merge(kwargs)
 
-  config.task_fn = lambda: Task(config.game)
-  config.eval_env = config.task_fn()
+  config.num_workers = 8
+  config.task_fn = lambda: Task(config.game, num_envs=config.num_workers)
+  config.eval_env = Task(config.game)
 
   config.network_fn = lambda: GaussianActorCriticNet(
       config.state_dim,
@@ -178,8 +179,10 @@ if __name__ == '__main__':
 
   # game = 'HalfCheetah-v2'
   game = 'Hopper-v2'
+  game = 'LunarLanderContinuous-v2'
+  game = 'BipedalWalkerHardcore-v2'
   # a2c_continuous(game=game)
-  # ppo_continuous(game=game)
+  ppo_continuous(game=game)
   # ddpg_continuous(game=game)
   # td3_continuous(game=game)
 
@@ -190,5 +193,5 @@ if __name__ == '__main__':
   # categorical_dqn_pixel(game=game)
   # a2c_pixel(game=game)
   # n_step_dqn_pixel(game=game)
-  option_critic_pixel(game=game)
+  # option_critic_pixel(game=game)
   # ppo_pixel(game=game)
