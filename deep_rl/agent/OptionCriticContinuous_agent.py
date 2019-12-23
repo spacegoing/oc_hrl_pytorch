@@ -60,10 +60,13 @@ class OptionCriticContinuousAgent(BaseAgent):
       options = self.sample_option(prediction, epsilon, self.prev_options,
                                    self.is_initial_states)
       prediction['pi'] = prediction['pi'][self.worker_index, options]
-      prediction['log_pi'] = prediction['log_pi'][self.worker_index, options]
-      dist = torch.distributions.Categorical(probs=prediction['pi'])
+      # recurr diff: pi are probs (mean), std are trained params
+      dist = torch.distributions.Normal(
+          loc=prediction['pi'], scale=F.softplus(self.network.std[options]))
       actions = dist.sample()
-      entropy = dist.entropy()
+      # recurr diff: log_pi here is log_prob of action
+      prediction['log_pi'] = dist.log_prob(actions).sum(-1).unsqueeze(-1)
+      entropy = dist.entropy().sum(-1)
 
       next_states, rewards, terminals, info = self.task.step(to_np(actions))
       self.record_online_return(info)
@@ -112,35 +115,33 @@ class OptionCriticContinuousAgent(BaseAgent):
     q, beta, log_pi, ret, adv, beta_adv, ent, option, action, initial_states, prev_o = \
         storage.cat(['q', 'beta', 'log_pi', 'ret', 'adv', 'beta_adv', 'ent', 'o', 'a', 'init', 'prev_o'])
 
-
     if config.log_interval and not self.total_steps % config.log_interval:
       self.logger.add_scalar('input_info/return',
-                            ret.mean().detach(), self.total_steps)
+                             ret.mean().detach(), self.total_steps)
       self.logger.add_scalar('input_info/adv_o',
-                            adv.mean().detach(), self.total_steps)
+                             adv.mean().detach(), self.total_steps)
       self.logger.add_scalar('input_info/adv_beta',
-                            beta_adv.mean().detach(), self.total_steps)
+                             beta_adv.mean().detach(), self.total_steps)
 
     q_loss = (q.gather(1, option) - ret.detach()).pow(2).mul(0.5).mean()
-    pi_loss = -(log_pi.gather(1, action) *
-                adv.detach()) - config.entropy_weight * ent
+    # recurr diff: log_pi here is log_prob of action, no need to gather action
+    pi_loss = -(log_pi * adv.detach()) - config.entropy_weight * ent
     pi_loss = pi_loss.mean()
     beta_loss = (beta.gather(1, prev_o) * beta_adv.detach() *
                  (1 - initial_states)).mean()
     total_loss = pi_loss + q_loss + beta_loss
 
-
     if config.log_interval and not self.total_steps % config.log_interval:
       self.logger.add_scalar('loss/total_loss', total_loss.detach(),
-                            self.total_steps)
+                             self.total_steps)
       self.logger.add_scalar('loss/entropy_loss',
-                            ent.mean().detach(), self.total_steps)
+                             ent.mean().detach(), self.total_steps)
       self.logger.add_scalar('loss/option_loss', pi_loss.detach(),
-                            self.total_steps)
+                             self.total_steps)
       self.logger.add_scalar('loss/q_omega_loss', q_loss.detach(),
-                            self.total_steps)
+                             self.total_steps)
       self.logger.add_scalar('loss/beta_loss', beta_loss.detach(),
-                            self.total_steps)
+                             self.total_steps)
 
     self.optimizer.zero_grad()
     total_loss.backward()

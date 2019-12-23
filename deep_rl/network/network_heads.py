@@ -94,7 +94,7 @@ class OptionCriticNet(nn.Module, BaseNet):
   def forward(self, x):
     phi = self.body(tensor(x))
     q = self.fc_q(phi)
-    beta = F.softmax(self.fc_beta(phi))
+    beta = F.softmax(self.fc_beta(phi), dim=-1)
     pi = self.fc_pi(phi)
     pi = pi.view(-1, self.num_options, self.action_dim)
     log_pi = F.log_softmax(pi, dim=-1)
@@ -115,7 +115,7 @@ class OptionCriticGaussianNet(nn.Module, BaseNet):
 
     # differ to none Gaussian
     # std is a parameter, optimized through gradients
-    self.std = nn.Parameter(torch.zeros(action_dim))
+    self.std = nn.Parameter(torch.zeros([num_options, action_dim]))
 
     self.body = body
     self.to(Config.DEVICE)
@@ -123,12 +123,11 @@ class OptionCriticGaussianNet(nn.Module, BaseNet):
   def forward(self, x):
     phi = self.body(tensor(x))
     q = self.fc_q(phi)
-    beta = F.softmax(self.fc_beta(phi))
+    beta = F.softmax(self.fc_beta(phi), dim=-1)
     pi = self.fc_pi(phi)
     pi = pi.view(-1, self.num_options, self.action_dim)
-    log_pi = F.log_softmax(pi, dim=-1)
     pi = F.softmax(pi, dim=-1)
-    return {'q': q, 'beta': beta, 'log_pi': log_pi, 'pi': pi}
+    return {'q': q, 'beta': beta, 'pi': pi}
 
 
 class DeterministicActorCriticNet(nn.Module, BaseNet):
