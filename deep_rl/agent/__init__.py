@@ -8,3 +8,4 @@ from .PPO_agent import *
 from .OptionCritic_agent import *
 from .OptionCriticContinuous_agent import *
 from .TD3_agent import *
+from .PPOC_agent import *
