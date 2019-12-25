@@ -43,7 +43,6 @@ def set_tasks(config):
   config.game = games[0]
 
 
-
 # Option-Critic
 def option_critic_feature(**kwargs):
   generate_tag(kwargs)
@@ -232,25 +231,25 @@ def ppo_continuous(**kwargs):
 def ppoc_continuous(**kwargs):
   generate_tag(kwargs)
   kwargs.setdefault('log_level', 0)
-  kwargs.setdefault('log_level', 0)
-  kwargs.setdefault('num_o', 4)
   kwargs.setdefault('learning', 'all')
-  kwargs.setdefault('gate', nn.ReLU())
-  kwargs.setdefault('entropy_weight', 0.01)
   kwargs.setdefault('tasks', False)
-  kwargs.setdefault('max_steps', 2e6)
   config = Config()
   config.merge(kwargs)
 
+  config.num_workers = 8
+  config.single_process = True
+  config.task_fn = lambda: Task(
+      config.game,
+      num_envs=config.num_workers,
+      single_process=config.single_process)
+  config.eval_env = Task(config.game)
+
+  config.num_o = 4
   if 'dm-humanoid' in config.game:
     hidden_units = (128, 128)
   else:
     hidden_units = (64, 64)
-
-  config.num_workers = 16
-  config.task_fn = lambda: Task(config.game, num_envs=config.num_workers)
-  config.eval_env = Task(config.game)
-  config.optimizer_fn = lambda params: torch.optim.RMSprop(params, 0.001)
+  config.gate = nn.ReLU()
   config.network_fn = lambda: OptionGaussianActorCriticNet(
       config.state_dim,
       config.action_dim,
@@ -263,64 +262,42 @@ def ppoc_continuous(**kwargs):
       option_body_fn=lambda: FCBody(
           config.state_dim, hidden_units=hidden_units, gate=config.gate),
   )
-
   config.optimizer_fn = lambda params: torch.optim.Adam(params, 3e-4, eps=1e-5)
-  config.discount = 0.99
-  config.use_gae = True
-  config.gae_tau = 0.95
   config.gradient_clip = 0.5
+
+  config.discount = 0.99
   config.rollout_length = 2048
+  config.max_steps = 1e9
+  config.state_normalizer = MeanStdNormalizer()
+  config.log_interval = 2048
+
+  # PPO params
+  # training params
   config.optimization_epochs = 10
   config.mini_batch_size = 64
+  # model params
+  config.use_gae = True
+  config.gae_tau = 0.95
   config.ppo_ratio_clip = 0.2
-  config.log_interval = 2048
-  config.max_steps = 1e9
+  config.entropy_weight = 0.01
+
+  # OC params
   config.beta_reg = 0.01
-  config.state_normalizer = MeanStdNormalizer()
+  config.delib_cost = 0.01
+
   run_steps(PPOCAgent(config))
 
 
-# DOC
-def doc_continuous(**kwargs):
-  generate_tag(kwargs)
-  kwargs.setdefault('log_level', 0)
-  config = Config()
-  config.merge(kwargs)
-
-  config.task_fn = lambda: Task(config.game)
-  config.eval_env = config.task_fn()
-  config.max_steps = int(1e6)
-  config.eval_interval = int(1e4)
-  config.eval_episodes = 20
-
-  config.network_fn = lambda: DeterministicOptionCriticNet(
-      action_dim=config.action_dim,
-      num_options=2,
-      phi_body=DummyBody(config.state_dim),
-      actor_body=FCBody(config.state_dim, (400, 300), gate=F.relu),
-      critic_body=TwoLayerFCBodyWithAction(
-          config.state_dim, config.action_dim, (400, 300), gate=F.relu),
-      beta_body=FCBody(config.state_dim, (400, 300), gate=F.relu),
-      actor_opt_fn=lambda params: torch.optim.Adam(params, lr=1e-4),
-      critic_opt_fn=lambda params: torch.optim.Adam(params, lr=1e-3),
-  )
-
-  config.replay_fn = lambda: Replay(memory_size=int(1e6), batch_size=64)
-  config.discount = 0.99
-  config.random_process_fn = lambda: OrnsteinUhlenbeckProcess(
-      size=(config.action_dim,), std=LinearSchedule(0.2))
-  config.warm_up = int(1e4)
-  config.target_network_mix = 1e-3
-  run_steps(OptionD3PGAgent(config))
-
-
 if __name__ == '__main__':
+  # use tuna to profile:
+  # python -m cProfile -o program.prof run_ppoc.py
   mkdir('log/oc')
   mkdir('tf_log/oc')
   mkdir('data')
   set_one_thread()
   random_seed()
-  select_device(-1)
+  # select_device(-1)
+  select_device(0)
   env_list = [
       'RoboschoolHopper-v1', 'RoboschoolWalker2d-v1',
       'RoboschoolHalfCheetah-v1', 'RoboschoolAnt-v1', 'RoboschoolHumanoid-v1'
