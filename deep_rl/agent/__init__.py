@@ -6,6 +6,6 @@ from .NStepDQN_agent import *
 from .QuantileRegressionDQN_agent import *
 from .PPO_agent import *
 from .OptionCritic_agent import *
-from .OptionCriticContinuous_agent import *
+from .OC_agent import *
 from .TD3_agent import *
 from .PPOC_agent import *
