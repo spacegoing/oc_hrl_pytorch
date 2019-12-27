@@ -325,8 +325,6 @@ class OptionGaussianActorCriticNet(nn.Module, BaseNet):
         nn.Linear(actor_body.feature_dim, num_options), 1e-3)
     self.fc_q_o = layer_init(
         nn.Linear(critic_body.feature_dim, num_options), 1e-3)
-    self.fc_u_o = layer_init(
-        nn.Linear(critic_body.feature_dim, num_options + 1), 1e-3)
 
     self.num_options = num_options
     self.action_dim = action_dim
@@ -360,13 +358,11 @@ class OptionGaussianActorCriticNet(nn.Module, BaseNet):
     # critic network
     phi_c = self.critic_body(phi)
     q_o = self.fc_q_o(phi_c)
-    u_o = self.fc_u_o(phi_c)
 
     return {
         'mean': mean,
         'std': std,
         'q_o': q_o,
-        'u_o': u_o,
         'inter_pi': pi_o,
         'log_inter_pi': log_pi_o,
         'beta': beta
