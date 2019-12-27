@@ -51,15 +51,6 @@ class PPOCAgent(BaseAgent):
     pi_bar = dist.log_prob(action).sum(-1).exp().unsqueeze(-1)
     return pi_bar
 
-  def compute_log_pi_a(self, options, pi_hat, action, mean, std, mdp):
-    if mdp == 'hat':
-      return pi_hat.add(1e-5).log().gather(1, options)
-    elif mdp == 'bar':
-      pi_bar = self.compute_pi_bar(options, action, mean, std)
-      return pi_bar.add(1e-5).log()
-    else:
-      raise NotImplementedError
-
   def compute_adv(self, storage):
     config = self.config
 
