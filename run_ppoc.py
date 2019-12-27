@@ -276,7 +276,7 @@ def ppoc_continuous(**kwargs):
   config.optimization_epochs = 10
   config.mini_batch_size = 64
   # model params
-  config.use_gae = True
+  config.use_gae = False
   config.gae_tau = 0.95
   config.ppo_ratio_clip = 0.2
   config.entropy_weight = 0.01
@@ -316,6 +316,7 @@ if __name__ == '__main__':
   # game = 'HalfCheetah-v2'
   game = 'RoboschoolHopper-v1'
   game = 'BipedalWalkerHardcore-v2'
+  game = 'LunarLanderContinuous-v2'
   # oc_continuous(game=game)
   # doc_continuous(game=game)
   # a2c_continuous(game=game)
