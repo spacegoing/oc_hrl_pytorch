@@ -229,6 +229,8 @@ def ppo_continuous(**kwargs):
 
 # PPOC
 def ppoc_continuous(**kwargs):
+  # debug:
+  # kwargs={'game':game}
   generate_tag(kwargs)
   kwargs.setdefault('log_level', 0)
   kwargs.setdefault('learning', 'all')
@@ -262,20 +264,20 @@ def ppoc_continuous(**kwargs):
       option_body_fn=lambda: FCBody(
           config.state_dim, hidden_units=hidden_units, gate=config.gate),
   )
-  # config.hid_dim = 64
-  # config.network_fn = lambda: LstmOptionGaussianActorCriticNet(
-  #     config.state_dim,
-  #     config.action_dim,
-  #     num_options=config.num_o,
-  #     hid_dim=config.hid_dim,
-  #     phi_body=DummyBody(config.state_dim),
-  #     actor_body=FCBody(
-  #         config.state_dim, hidden_units=hidden_units, gate=config.gate),
-  #     critic_body=FCBody(
-  #         config.state_dim, hidden_units=hidden_units, gate=config.gate),
-  #     option_body_fn=lambda: FCBody(
-  #         config.state_dim, hidden_units=hidden_units, gate=config.gate),
-  # )
+  config.hid_dim = 64
+  config.network_fn = lambda: LstmOptionGaussianActorCriticNet(
+      config.state_dim,
+      config.action_dim,
+      num_options=config.num_o,
+      hid_dim=config.hid_dim,
+      phi_body=DummyBody(config.state_dim),
+      actor_body=FCBody(
+          config.state_dim, hidden_units=hidden_units, gate=config.gate),
+      critic_body=FCBody(
+          config.state_dim, hidden_units=hidden_units, gate=config.gate),
+      option_body_fn=lambda: FCBody(
+          config.state_dim, hidden_units=hidden_units, gate=config.gate),
+      config=config)
   config.optimizer_fn = lambda params: torch.optim.Adam(params, 3e-4, eps=1e-5)
   config.gradient_clip = 0.5
 
@@ -302,7 +304,8 @@ def ppoc_continuous(**kwargs):
   run_steps(PPOCAgent(config))
 
 
-if __name__ == '__main__':
+# if __name__ == '__main__':
+if True:
   # use tuna to profile:
   # python -m cProfile -o program.prof run_ppoc.py
   mkdir('log/oc')

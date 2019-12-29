@@ -200,5 +200,17 @@ class Storage:
             setattr(self, key, [])
 
     def cat(self, keys):
+        '''
+        return:
+        x: tensor[num_workers*rollout_length, feat_dim]
+        '''
         data = [getattr(self, k)[:self.size] for k in keys]
         return map(lambda x: torch.cat(x, dim=0), data)
+
+    def recur_cat(self, keys):
+        '''
+        return:
+        x: tensor[num_workers, rollout_length, feat_dim]
+        '''
+        data = [getattr(self, k)[:self.size] for k in keys]
+        return map(lambda x: torch.stack(x, dim=1), data)
