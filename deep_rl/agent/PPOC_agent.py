@@ -32,13 +32,13 @@ class PPOCAgent(BaseAgent):
   def compute_pi_hat(self, prediction, prev_option, is_intial_states):
     # sample option
 
-    inter_pi = prediction['inter_pi']
-    mask = torch.zeros_like(inter_pi)
+    pi_o = prediction['pi_o']
+    mask = torch.zeros_like(pi_o)
     mask[self.worker_index, prev_option] = 1
     beta = prediction['beta']
-    pi_hat = (1 - beta) * mask + beta * inter_pi
-    is_intial_states = is_intial_states.view(-1, 1).expand(-1, inter_pi.size(1))
-    pi_hat = torch.where(is_intial_states, inter_pi, pi_hat)
+    pi_hat = (1 - beta) * mask + beta * pi_o
+    is_intial_states = is_intial_states.view(-1, 1).expand(-1, pi_o.size(1))
+    pi_hat = torch.where(is_intial_states, pi_o, pi_hat)
     return pi_hat
 
   def compute_pi_bar(self, options, action, mean, std):
@@ -96,6 +96,7 @@ class PPOCAgent(BaseAgent):
         sampled_inits = inits[batch_indices]
         sampled_prev_options = prev_options[batch_indices]
 
+        # todo: random batch
         prediction = self.network(sampled_states)
         # todo: un exp
         pi_bar = self.compute_pi_bar(sampled_options, sampled_actions,
@@ -109,7 +110,7 @@ class PPOCAgent(BaseAgent):
         policy_loss = -torch.min(obj, obj_clipped).mean()
 
         beta_adv = prediction['q_o'].gather(1, sampled_prev_options) - \
-                   (prediction['q_o'] * prediction['inter_pi']).sum(-1).unsqueeze(-1)
+                   (prediction['q_o'] * prediction['pi_o']).sum(-1).unsqueeze(-1)
         beta_adv = beta_adv.detach() + config.beta_reg
         beta_loss = prediction['beta'].gather(
             1, sampled_prev_options) * (1 - sampled_inits).float() * beta_adv
@@ -118,13 +119,12 @@ class PPOCAgent(BaseAgent):
         q_loss = (prediction['q_o'].gather(1, sampled_options) -
                   sampled_returns).pow(2).mul(0.5).mean()
 
-        ent = -(prediction['log_inter_pi'] *
-                prediction['inter_pi']).sum(-1).mean()
-        inter_pi_loss = -(prediction['log_inter_pi'].gather(1, sampled_options) * sampled_advantages).mean()\
+        ent = -(prediction['log_pi_o'] * prediction['pi_o']).sum(-1).mean()
+        pi_o_loss = -(prediction['log_pi_o'].gather(1, sampled_options) * sampled_advantages).mean()\
                         - config.entropy_weight * ent
 
         self.opt.zero_grad()
-        (policy_loss + beta_loss + q_loss + inter_pi_loss).backward()
+        (policy_loss + beta_loss + q_loss + pi_o_loss).backward()
         nn.utils.clip_grad_norm_(self.network.parameters(),
                                  config.gradient_clip)
         self.opt.step()
@@ -133,11 +133,19 @@ class PPOCAgent(BaseAgent):
     config = self.config
     storage = Storage(config.rollout_length)
     states = self.states
+
+    if self.network.is_recur:
+      pi_o_hid_states, q_o_hid_states,\
+        all_option_hid_states = self.network.get_all_init_states()
     with torch.no_grad():
       for _ in range(config.rollout_length):
 
         # select option
-        prediction = self.network(states)
+        if self.network.is_recur:
+          prediction = self.network(states, pi_o_hid_states, q_o_hid_states,
+                                    all_option_hid_states, self.prev_options)
+        else:
+          prediction = self.network(states)
         pi_hat = self.compute_pi_hat(prediction, self.prev_options,
                                      self.is_initial_states)
         dist = torch.distributions.Categorical(probs=pi_hat)
@@ -189,10 +197,16 @@ class PPOCAgent(BaseAgent):
 
       # select next option
       self.states = states
-      prediction = self.network(states)
+      if self.network.is_recur:
+        prediction = self.network(states, prediction['pi_o_hid_state'],
+                                  prediction['q_o_hid_state'],
+                                  prediction['option_hid_states'],
+                                  self.prev_options)
+      else:
+        prediction = self.network(states)
       pi_hat = self.compute_pi_hat(prediction, self.prev_options,
                                    self.is_initial_states)
-      dist = torch.distributions.Categorical(pi_hat)
+      dist = torch.distributions.Categorical(probs=pi_hat)
       options = dist.sample()
 
       # storage next option data

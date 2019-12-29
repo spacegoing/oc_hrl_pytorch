@@ -11,10 +11,10 @@ import numpy as np
 from ..utils import *
 
 
-class BaseNet:
+class BaseNet(nn.Module):
     def __init__(self):
+        super().__init__()
         self.is_recur = False
-        pass
 
 
 def layer_init(layer, w_scale=1.0):
@@ -22,3 +22,14 @@ def layer_init(layer, w_scale=1.0):
     layer.weight.data.mul_(w_scale)
     nn.init.constant_(layer.bias.data, 0)
     return layer
+
+def lstm_init(lstm, w_scale=1.0):
+    for layer_p in lstm._all_weights:
+        for p in layer_p:
+            import ipdb; ipdb.set_trace(context=7)
+            if 'weight' in p:
+                nn.init.orthogonal_(lstm.__getattr__(p))
+                lstm.__getattr__(p).mul_(w_scale)
+            if 'bias' in p:
+                nn.init.constant_(lstm.__getattr__(p), 0)
+    return lstm

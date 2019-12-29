@@ -8,7 +8,7 @@ from .network_utils import *
 from .network_bodies import *
 
 
-class VanillaNet(nn.Module, BaseNet):
+class VanillaNet(BaseNet):
 
   def __init__(self, output_dim, body):
     super(VanillaNet, self).__init__()
@@ -22,7 +22,7 @@ class VanillaNet(nn.Module, BaseNet):
     return y
 
 
-class DuelingNet(nn.Module, BaseNet):
+class DuelingNet(BaseNet):
 
   def __init__(self, action_dim, body):
     super(DuelingNet, self).__init__()
@@ -40,7 +40,7 @@ class DuelingNet(nn.Module, BaseNet):
     return q
 
 
-class CategoricalNet(nn.Module, BaseNet):
+class CategoricalNet(BaseNet):
 
   def __init__(self, action_dim, num_atoms, body):
     super(CategoricalNet, self).__init__()
@@ -60,7 +60,7 @@ class CategoricalNet(nn.Module, BaseNet):
     return prob, log_prob
 
 
-class QuantileNet(nn.Module, BaseNet):
+class QuantileNet(BaseNet):
 
   def __init__(self, action_dim, num_quantiles, body):
     super(QuantileNet, self).__init__()
@@ -78,7 +78,7 @@ class QuantileNet(nn.Module, BaseNet):
     return quantiles
 
 
-class OptionCriticNet(nn.Module, BaseNet):
+class OptionCriticNet(BaseNet):
 
   def __init__(self, body, action_dim, num_options):
     super(OptionCriticNet, self).__init__()
@@ -102,7 +102,7 @@ class OptionCriticNet(nn.Module, BaseNet):
     return {'q': q, 'beta': beta, 'log_pi': log_pi, 'pi': pi}
 
 
-class DeterministicActorCriticNet(nn.Module, BaseNet):
+class DeterministicActorCriticNet(BaseNet):
 
   def __init__(self,
                state_dim,
@@ -152,7 +152,7 @@ class DeterministicActorCriticNet(nn.Module, BaseNet):
     return self.fc_critic(self.critic_body(phi, a))
 
 
-class GaussianActorCriticNet(nn.Module, BaseNet):
+class GaussianActorCriticNet(BaseNet):
 
   def __init__(self,
                state_dim,
@@ -204,7 +204,7 @@ class GaussianActorCriticNet(nn.Module, BaseNet):
     }
 
 
-class CategoricalActorCriticNet(nn.Module, BaseNet):
+class CategoricalActorCriticNet(BaseNet):
 
   def __init__(self,
                state_dim,
@@ -249,7 +249,7 @@ class CategoricalActorCriticNet(nn.Module, BaseNet):
     return {'a': action, 'log_pi_a': log_prob, 'ent': entropy, 'v': v}
 
 
-class TD3Net(nn.Module, BaseNet):
+class TD3Net(BaseNet):
 
   def __init__(
       self,
@@ -293,7 +293,7 @@ class TD3Net(nn.Module, BaseNet):
     return q_1, q_2
 
 
-class OptionGaussianActorCriticNet(nn.Module, BaseNet):
+class OptionGaussianActorCriticNet(BaseNet):
 
   def __init__(self,
                state_dim,
@@ -303,7 +303,7 @@ class OptionGaussianActorCriticNet(nn.Module, BaseNet):
                actor_body=None,
                critic_body=None,
                option_body_fn=None):
-    super(OptionGaussianActorCriticNet, self).__init__()
+    super().__init__()
     if phi_body is None:
       phi_body = DummyBody(state_dim)
     if critic_body is None:
@@ -363,23 +363,26 @@ class OptionGaussianActorCriticNet(nn.Module, BaseNet):
         'mean': mean,
         'std': std,
         'q_o': q_o,
-        'inter_pi': pi_o,
-        'log_inter_pi': log_pi_o,
+        'pi_o': pi_o,
+        'log_pi_o': log_pi_o,
         'beta': beta
     }
 
 
-class LstmOptionGaussianActorCriticNet(nn.Module, BaseNet):
+class LstmOptionGaussianActorCriticNet(BaseNet):
 
   def __init__(self,
                state_dim,
                action_dim,
                num_options,
+               hid_dim,
                phi_body=None,
                actor_body=None,
                critic_body=None,
                option_body_fn=None):
-    super(OptionGaussianActorCriticNet, self).__init__()
+    super().__init__()
+    self.is_recur = True
+
     if phi_body is None:
       phi_body = DummyBody(state_dim)
     if critic_body is None:
@@ -393,22 +396,39 @@ class LstmOptionGaussianActorCriticNet(nn.Module, BaseNet):
 
     # build option network
     self.options = nn.ModuleList([
-        SingleOptionNet(action_dim, option_body_fn) for _ in range(num_options)
+        SingleLstmOptionNet(action_dim, hid_dim, option_body_fn)
+        for _ in range(num_options)
     ])
 
     # linear output
-    self.fc_pi_o = layer_init(
-        nn.Linear(actor_body.feature_dim, num_options), 1e-3)
-    self.fc_q_o = layer_init(
-        nn.Linear(critic_body.feature_dim, num_options), 1e-3)
+    self.lstm_pi_o = lstm_init(
+        nn.LSTM(actor_body.feature_dim, hid_dim, batch_first=True), 1e-3)
+    self.fc_pi_o = layer_init(nn.Linear(hid_dim, num_options), 1e-3)
+
+    self.lstm_q_o = lstm_init(
+        nn.LSTM(critic_body.feature_dim, hid_dim, batch_first=True), 1e-3)
+    self.fc_q_o = layer_init(nn.Linear(hid_dim, num_options), 1e-3)
 
     self.num_options = num_options
     self.action_dim = action_dim
+    self.hid_dim = hid_dim
     self.to(Config.DEVICE)
 
-  def forward(self, obs):
+  def forward(self, obs, pi_o_states, q_o_states, option_states, prev_options):
+    '''
+    pi_o_states: [(seq_len, batchsize, hid_dim), (seq_len, batchsize, hid_dim)]
+    q_o_states: [(seq_len, batchsize, hid_dim), (seq_len, batchsize, hid_dim)]
+    option_states: [pi_a_states, beta_states]
+    prev_option: int. prev selected option
+
+    other than prev_option using option_states, other options using zero states
+
+    returns:
+    option_hid_states: list:[num_options] each entry: [pi_a_hid_state, beta_hid_state]
+    '''
 
     # state feature
+    # todo: check cuda device
     obs = tensor(obs)
     phi = self.phi_body(obs)
 
@@ -416,36 +436,55 @@ class LstmOptionGaussianActorCriticNet(nn.Module, BaseNet):
     mean = []
     std = []
     beta = []
-    for option in self.options:
-      prediction = option(phi)
+    option_hid_states = []
+    batch_size = obs.shape[0]
+    pi_a_states = (phi.new_zeros([1, batch_size, self.hid_dim]),
+                   phi.new_zeros([1, batch_size, self.hid_dim]))
+    beta_states = (phi.new_zeros([1, batch_size, self.hid_dim]),
+                   phi.new_zeros([1, batch_size, self.hid_dim]))
+    worker_states = []
+    for i in prev_options:
+      import ipdb; ipdb.set_trace(context=7)
+
+    for option,option_states in enumerate(self.options):
+      prediction = option(phi, option_states[0], option_states[1])
       mean.append(prediction['mean'].unsqueeze(1))
       std.append(prediction['std'].unsqueeze(1))
       beta.append(prediction['beta'])
+      option_hid_states.append(
+          [prediction['pi_a_hid_state'], prediction['beta_hid_state']])
     mean = torch.cat(mean, dim=1)
     std = torch.cat(std, dim=1)
     beta = torch.cat(beta, dim=1)
 
     # policy over option with soft-max
     phi_a = self.actor_body(phi)
-    phi_a = self.fc_pi_o(phi_a)
+    _, final_state = self.lstm_pi_o(phi_a, pi_o_states)
+    pi_o_hid_state = final_state[0]
+    phi_a = self.fc_pi_o(pi_o_hid_state)
     pi_o = F.softmax(phi_a, dim=-1)
     log_pi_o = F.log_softmax(phi_a, dim=-1)
 
     # critic network
     phi_c = self.critic_body(phi)
-    q_o = self.fc_q_o(phi_c)
+    _, final_state = self.lstm_q_o(phi_c, q_o_states)
+    q_o_hid_state = final_state[0]
+    q_o = self.fc_q_o(q_o_hid_state)
 
     return {
         'mean': mean,
         'std': std,
+        'beta': beta,
+        'pi_o': pi_o,
+        'log_pi_o': log_pi_o,
+        'pi_o_hid_state': pi_o_hid_state,
         'q_o': q_o,
-        'inter_pi': pi_o,
-        'log_inter_pi': log_pi_o,
-        'beta': beta
+        'q_o_hid_state': q_o_hid_state,
+        'option_hid_states': option_hid_states
     }
 
 
-class SoftOptionGaussianActorCriticNet(nn.Module, BaseNet):
+class SoftOptionGaussianActorCriticNet(BaseNet):
 
   def __init__(self,
                state_dim,
@@ -541,18 +580,18 @@ class SoftOptionGaussianActorCriticNet(nn.Module, BaseNet):
         'q_o_2': q_o_2,
         'v_o': v_o,
         'u_o': u_o,
-        'inter_pi': pi_o,
-        'log_inter_pi': log_pi_o,
+        'pi_o': pi_o,
+        'log_pi_o': log_pi_o,
         'beta': beta
     }
 
 
-class InterOptionPGNet(nn.Module, BaseNet):
+class InterOptionPGNet(BaseNet):
 
   def __init__(self, body, action_dim, num_options):
     super(InterOptionPGNet, self).__init__()
     self.fc_q = layer_init(nn.Linear(body.feature_dim, num_options))
-    self.fc_inter_pi = layer_init(nn.Linear(body.feature_dim, num_options))
+    self.fc_pi_o = layer_init(nn.Linear(body.feature_dim, num_options))
     self.fc_pi = layer_init(
         nn.Linear(body.feature_dim, num_options * action_dim))
     self.fc_beta = layer_init(nn.Linear(body.feature_dim, num_options))
@@ -571,17 +610,17 @@ class InterOptionPGNet(nn.Module, BaseNet):
     log_pi = F.log_softmax(pi, dim=-1)
     pi = F.softmax(pi, dim=-1)
 
-    inter_pi = self.fc_inter_pi(phi)
-    log_inter_pi = F.log_softmax(inter_pi, dim=-1)
-    inter_pi = F.softmax(inter_pi, dim=-1)
+    pi_o = self.fc_pi_o(phi)
+    log_pi_o = F.log_softmax(pi_o, dim=-1)
+    pi_o = F.softmax(pi_o, dim=-1)
 
     return {
         'q': q,
         'beta': beta,
         'log_pi': log_pi,
         'pi': pi,
-        'log_inter_pi': log_inter_pi,
-        'inter_pi': inter_pi,
+        'log_pi_o': log_pi_o,
+        'pi_o': pi_o,
         'phi': phi
     }
 
@@ -614,31 +653,46 @@ class SingleOptionNet(nn.Module):
 
 class SingleLstmOptionNet(nn.Module):
 
-  def __init__(self, action_dim, body_fn):
-    super(SingleOptionNet, self).__init__()
+  def __init__(self, action_dim, hid_dim, body_fn):
+    super().__init__()
     self.pi_body = body_fn()
     self.beta_body = body_fn()
-    self.fc_pi = layer_init(
-        nn.Linear(self.pi_body.feature_dim, action_dim), 1e-3)
-    self.fc_beta = layer_init(nn.Linear(self.beta_body.feature_dim, 1), 1e-3)
+    self.lstm_pi = lstm_init(
+        nn.LSTM(self.pi_body.feature_dim, hid_dim, batch_first=True), 1e-3)
+    self.lstm_beta = lstm_init(
+        nn.LSTM(self.beta_body.feature_dim, hid_dim, batch_first=True), 1e-3)
+    self.fc_pi = layer_init(nn.Linear(hid_dim, action_dim), 1e-3)
+    self.fc_beta = layer_init(nn.Linear(hid_dim, 1), 1e-3)
     self.std = nn.Parameter(torch.zeros((1, action_dim)))
 
-  def forward(self, phi):
+  def forward(self, phi, pi_a_state, beta_state):
+    '''
+    pi_a_state: [(seq_len, batchsize, hid_dim), (seq_len, batchsize, hid_dim)]
+    beta_state: [(seq_len, batchsize, hid_dim), (seq_len, batchsize, hid_dim)]
+
+    for ppo, seq_len = 1
+    '''
     phi_pi = self.pi_body(phi)
-    mean = F.tanh(self.fc_pi(phi_pi))
+    _, final_state = self.lstm_pi(phi_pi, pi_a_state)
+    pi_a_hid_state = final_state[0]
+    mean = torch.tanh(self.fc_pi(pi_a_hid_state))
     std = F.softplus(self.std).expand(mean.size(0), -1)
 
     phi_beta = self.beta_body(phi)
-    beta = F.sigmoid(self.fc_beta(phi_beta))
+    _, final_state = self.lstm_beta(phi_beta, beta_state)
+    beta_hid_state = final_state[0]
+    beta = F.softmax(self.fc_beta(beta_hid_state))
 
     return {
         'mean': mean,
+        'pi_a_hid_state': pi_a_hid_state,
         'std': std,
         'beta': beta,
+        'beta_hid_state': beta_hid_state
     }
 
 
-class DeterministicOptionCriticNet(nn.Module, BaseNet):
+class DeterministicOptionCriticNet(BaseNet):
 
   def __init__(self,
                action_dim,
@@ -719,7 +773,7 @@ class DeterministicOptionCriticNet(nn.Module, BaseNet):
     return q
 
 
-class GammaDeterministicOptionCriticNet(nn.Module, BaseNet):
+class GammaDeterministicOptionCriticNet(BaseNet):
 
   def __init__(self,
                action_dim,
@@ -838,7 +892,7 @@ class CriticModel(nn.Module):
     return self.layers(phi)
 
 
-class PlanEnsembleDeterministicNet(nn.Module, BaseNet):
+class PlanEnsembleDeterministicNet(BaseNet):
 
   def __init__(self,
                state_dim,
@@ -909,7 +963,7 @@ class PlanEnsembleDeterministicNet(nn.Module, BaseNet):
     return actions
 
 
-class NaiveModelDDPGNet(nn.Module, BaseNet):
+class NaiveModelDDPGNet(BaseNet):
 
   def __init__(self,
                state_dim,
