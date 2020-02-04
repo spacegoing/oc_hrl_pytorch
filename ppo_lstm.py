@@ -216,8 +216,8 @@ if True:
 
   # game = 'HalfCheetah-v2'
   game = 'RoboschoolHopper-v1'
-  game = 'BipedalWalkerHardcore-v2'
-  # game = 'LunarLanderContinuous-v2'
+  # game = 'BipedalWalkerHardcore-v2'
+  game = 'LunarLanderContinuous-v2'
   # oc_continuous(game=game)
   # doc_continuous(game=game)
   # a2c_continuous(game=game)
