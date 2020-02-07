@@ -42,14 +42,21 @@ def set_tasks(config):
   config.tasks = [Task(g, num_envs=config.num_workers) for g in games]
   config.game = games[0]
 
+
 def ppo_continuous(**kwargs):
   generate_tag(kwargs)
   kwargs.setdefault('log_level', 0)
   config = Config()
   config.merge(kwargs)
 
-  config.task_fn = lambda: Task(config.game)
-  config.eval_env = config.task_fn()
+  config.num_workers = 9  # must greater than 3
+  config.single_process = True
+  config.task_fn = lambda: Task(
+      config.game,
+      num_envs=config.num_workers,
+      single_process=config.single_process)
+  config.eval_env = Task(config.game)
+
 
   config.network_fn = lambda: GaussianActorCriticNet(
       config.state_dim,
@@ -147,13 +154,14 @@ def ppoc_continuous(**kwargs):
 
   run_steps(PPOCAgent(config))
 
+
 def ppo_lstm_continuous(**kwargs):
   generate_tag(kwargs)
   kwargs.setdefault('log_level', 0)
   config = Config()
   config.merge(kwargs)
 
-  config.num_workers = 8
+  config.num_workers = 9  # must greater than 3
   config.single_process = True
   config.task_fn = lambda: Task(
       config.game,
@@ -161,16 +169,27 @@ def ppo_lstm_continuous(**kwargs):
       single_process=config.single_process)
   config.eval_env = Task(config.game)
 
-  config.network_fn = lambda: GaussianActorCriticNet(
+  # lstm parameters
+  config.hid_dim = 64
+  config.num_lstm_layers = 1
+  config.lstm_to_fc_feat_dim = config.num_lstm_layers * config.hid_dim
+  config.bi_direction = True
+  if config.bi_direction:
+    config.lstm_to_fc_feat_dim = config.lstm_to_fc_feat_dim * 2
+  config.lstm_dropout = 0
+  config.network_fn = lambda: LstmActorCriticNet(
       config.state_dim,
       config.action_dim,
-      actor_body=FCBody(config.state_dim, gate=torch.tanh),
-      critic_body=FCBody(config.state_dim, gate=torch.tanh))
+      config.hid_dim,
+      actor_body=FCBody(config.lstm_to_fc_feat_dim, gate=torch.tanh),
+      critic_body=FCBody(config.lstm_to_fc_feat_dim, gate=torch.tanh),
+      config=config)
+
   config.optimizer_fn = lambda params: torch.optim.Adam(params, 3e-4, eps=1e-5)
   config.gradient_clip = 0.5
 
   config.discount = 0.99
-  config.rollout_length = 2048
+  config.rollout_length = 32
   config.max_steps = 1e9
   config.state_normalizer = MeanStdNormalizer()
   config.log_interval = 2048
@@ -221,8 +240,8 @@ if True:
   # oc_continuous(game=game)
   # doc_continuous(game=game)
   # a2c_continuous(game=game)
-  ppo_continuous(game=game)
   ppo_lstm_continuous(game=game)
+  ppo_continuous(game=game)
   # ddpg_continuous(game=game)
   # td3_continuous(game=game)
   # ppoc_continuous(game=game)

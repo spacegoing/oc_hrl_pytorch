@@ -204,6 +204,135 @@ class GaussianActorCriticNet(BaseNet):
     }
 
 
+class LstmActorCriticNet(BaseNet):
+
+  def __init__(self,
+               state_dim,
+               action_dim,
+               hid_dim,
+               phi_body=None,
+               actor_body=None,
+               critic_body=None,
+               config=None):
+    super().__init__(config)
+    self.is_recur = True
+    self.action_dim = action_dim
+    self.hid_dim = hid_dim
+    if config.bi_direction:
+      # h,c: (num_layers * num_directions, batch, hidden_size)
+      self.hid_size = [config.num_lstm_layers * 2, None, self.hid_dim]
+    else:
+      self.hid_size = [config.num_lstm_layers, None, self.hid_dim]
+
+    if phi_body is None:
+      phi_body = DummyBody(state_dim)
+    if critic_body is None:
+      critic_body = DummyBody(config.lstm_to_fc_feat_dim)
+    if actor_body is None:
+      actor_body = DummyBody(config.lstm_to_fc_feat_dim)
+
+    self.phi_body = phi_body
+    self.actor_body = actor_body
+    self.critic_body = critic_body
+
+    self.lstm = lstm_init(
+        nn.LSTM(
+            phi_body.feature_dim,
+            hid_dim,
+            num_layers=config.num_lstm_layers,
+            dropout=config.lstm_dropout,
+            bidirectional=config.bi_direction), 1e-3)
+
+    self.fc_action = layer_init(
+        nn.Linear(self.actor_body.feature_dim, action_dim), 1e-3)
+    self.fc_critic = layer_init(
+        nn.Linear(self.critic_body.feature_dim, 1), 1e-3)
+
+    # this is Config module, not self.config
+    # device is selected select_device() in main
+    self.std = nn.Parameter(torch.zeros(action_dim))
+    self.to(Config.DEVICE)
+
+  def forward(self, obs, input_lstm_states, masks, action_seq=None):
+    '''
+    obs: [timesteps, batch, feat_dim]
+    input_lstm_states: (h, c) h/c: [num_layers * num_directions, batch, hidden_size]
+    masks: [timesteps, batch]
+    '''
+    obs = tensor(obs)
+    masks = tensor(masks)
+    batch_size = masks.shape[1]
+    # extends to [timesteps, batch, 1]
+    # so it can be broadcast to [num_layers * num_directions, batch, hidden_size]
+    # when multiplied with h and c
+    masks = masks.unsqueeze(-1)
+    phi = self.phi_body(obs)
+
+    h_list = []
+    h_input, c_input = input_lstm_states
+    for p, m in zip(phi, masks):
+      h_input = h_input * m
+      c_input = c_input * m
+      _, final_lstm_states = self.lstm(p.unsqueeze(0), (h_input, c_input))
+      h_input, c_input = final_lstm_states
+      h_list.append(h_input)
+    # h,c: (num_layers * num_directions, batch, hidden_size)
+    # (1,batch, hidden_size)
+
+    a_list = []
+    log_prob_list = []
+    ent_list = []
+    mean_list = []
+    v_list = []
+    for t, h in enumerate(h_list):
+      # flat h into [batch, feat_dim] shape (ffn's input)
+      # h: (num_layers * num_directions, batch, hidden_size)->
+      #    (batch, hidden_size * num_layers * num_directions)
+      h = h.permute([1, 0, 2]).reshape([batch_size, -1])
+
+      phi_a = self.actor_body(h)
+      phi_v = self.critic_body(h)
+      mean = torch.tanh(self.fc_action(phi_a))
+      v = self.fc_critic(phi_v)
+      dist = torch.distributions.Normal(mean, F.softplus(self.std))
+      # if action is not none, during PPO training stage
+      # action [timesteps, action_dim]
+      if action_seq is None:
+        action = dist.sample()
+      else:
+        action = action_seq[t]
+      log_prob = dist.log_prob(action).sum(-1).unsqueeze(-1)
+      entropy = dist.entropy().sum(-1).unsqueeze(-1)
+
+      a_list.append(action)
+      log_prob_list.append(log_prob)
+      ent_list.append(entropy)
+      mean_list.append(mean)
+      v_list.append(v)
+
+    action, log_prob, h_final, entropy, mean, v = [
+        torch.cat(i)
+        for i in [a_list, log_prob_list, h_list, ent_list, mean_list, v_list]
+    ]
+    return {
+        'a': action,
+        'log_pi_a': log_prob,
+        'input_lstm_states': input_lstm_states,
+        'h_lstm_states': h_final,
+        'final_lstm_states': final_lstm_states,
+        'ent': entropy,
+        'mean': mean,
+        'v': v
+    }
+
+  def get_init_lstm_states(self, batchsize):
+    # h,c: (num_layers * num_directions, batch, hidden_size)
+    self.hid_size[1] = batchsize
+    init_states = (torch.zeros(self.hid_size, device=Config.DEVICE),
+                   torch.zeros(self.hid_size, device=Config.DEVICE))
+    return init_states
+
+
 class CategoricalActorCriticNet(BaseNet):
 
   def __init__(self,

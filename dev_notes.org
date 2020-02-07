@@ -1,0 +1,36 @@
+* lstm ppoc
+** Possible Bugs
+*** Batch First
+Current implementation not right
+
+#+BEGIN_QUOTE
+From https://pytorch.org/docs/stable/nn.html
+>>> rnn = nn.LSTM(10, 20, 2)
+>>> input = torch.randn(5, 3, 10)
+>>> h0 = torch.randn(2, 3, 20)
+>>> c0 = torch.randn(2, 3, 20)
+# hn and cn are the last step; (num_layers * num_directions, batch, hidden_size)
+# output (seq_len, batch, num_directions * hidden_size)
+>>> output, (hn, cn) = rnn(input, (h0, c0))
+#+END_QUOTE
+*** Done Mask
+- During ~forward~ stage (rollout, train_step)
+
+** Diff with nonrecur
+*** agent
+
+- Initiate input_lstm_states
+- reshape data from [batch, feat_dim] to [timesteps, batch,
+  feat_dim]
+- update input_lstm_states
+
+*** Advantage
+#+BEGIN_SRC python
+# From https://github.com/seungeunrho/minimalRL/blob/master/ppo-lstm.py
+# at time t: second_hidden = lstm(s,first_hidden)
+# at time t+1: s_prime = env.step(second_hidden)
+v_prime = self.v(s_prime, second_hidden).squeeze(1)
+td_target = r + gamma * v_prime * done_mask
+v_s = self.v(s, first_hidden).squeeze(1)
+delta = td_target - v_s
+#+END_SRC
