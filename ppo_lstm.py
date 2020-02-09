@@ -80,6 +80,7 @@ def ppo_continuous(**kwargs):
 
 # PPOC
 def ppoc_continuous(**kwargs):
+def ppoc_lstm_continuous(**kwargs):
   # debug:
   # kwargs={'game':game}
   generate_tag(kwargs)

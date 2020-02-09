@@ -216,6 +216,7 @@ class LstmActorCriticNet(BaseNet):
                config=None):
     super().__init__(config)
     self.is_recur = True
+    self.config = config
     self.action_dim = action_dim
     self.hid_dim = hid_dim
     if config.bi_direction:
@@ -255,19 +256,33 @@ class LstmActorCriticNet(BaseNet):
 
   def forward(self, obs, input_lstm_states, masks, action_seq=None):
     '''
-    obs: [timesteps, batch, feat_dim]
-    input_lstm_states: (h, c) h/c: [num_layers * num_directions, batch, hidden_size]
-    masks: [timesteps, batch]
+    Parameter:
+      obs: [timesteps, batch, feat_dim]
+      input_lstm_states: (h, c) h/c: [num_layers * num_directions, batch, hidden_size]
+      masks: [timesteps, batch]
+
+    Returns:
+      'input_lstm_states': [num_layers * num_directions, batch, hidden_size]
+      'final_lstm_states': [num_layers * num_directions, batch, hidden_size]
+      'a': [timesteps * batchsize, action_dim]
+      'log_pi_a': [timesteps * batchsize, 1]
+      'h_lstm_states': [timesteps * batchsize, hid_dim * num_layers * num_directions]
+      'ent': [timesteps * batchsize, 1]
+      'mean': [timesteps * batchsize, action_dim]
+      'v': [timesteps * batchsize, 1]
     '''
     obs = tensor(obs)
-    masks = tensor(masks)
     batch_size = masks.shape[1]
+
+    masks = tensor(masks)
     # extends to [timesteps, batch, 1]
     # so it can be broadcast to [num_layers * num_directions, batch, hidden_size]
     # when multiplied with h and c
     masks = masks.unsqueeze(-1)
+
     phi = self.phi_body(obs)
 
+    # LSTM Loop
     h_list = []
     h_input, c_input = input_lstm_states
     for p, m in zip(phi, masks):
@@ -275,25 +290,25 @@ class LstmActorCriticNet(BaseNet):
       c_input = c_input * m
       _, final_lstm_states = self.lstm(p.unsqueeze(0), (h_input, c_input))
       h_input, c_input = final_lstm_states
+      # h,c: (num_layers * num_directions, batch, hidden_size)
       h_list.append(h_input)
-    # h,c: (num_layers * num_directions, batch, hidden_size)
-    # (1,batch, hidden_size)
 
+    # output (fc) layers loop
     a_list = []
     log_prob_list = []
     ent_list = []
     mean_list = []
     v_list = []
+    h_out_list = []
     for t, h in enumerate(h_list):
       # flat h into [batch, feat_dim] shape (ffn's input)
       # h: (num_layers * num_directions, batch, hidden_size)->
       #    (batch, hidden_size * num_layers * num_directions)
       h = h.permute([1, 0, 2]).reshape([batch_size, -1])
+      h_out_list.append(h)
 
       phi_a = self.actor_body(h)
-      phi_v = self.critic_body(h)
       mean = torch.tanh(self.fc_action(phi_a))
-      v = self.fc_critic(phi_v)
       dist = torch.distributions.Normal(mean, F.softplus(self.std))
       # if action is not none, during PPO training stage
       # action [timesteps, action_dim]
@@ -301,6 +316,9 @@ class LstmActorCriticNet(BaseNet):
         action = dist.sample()
       else:
         action = action_seq[t]
+
+      phi_v = self.critic_body(h)
+      v = self.fc_critic(phi_v)
       log_prob = dist.log_prob(action).sum(-1).unsqueeze(-1)
       entropy = dist.entropy().sum(-1).unsqueeze(-1)
 
@@ -310,16 +328,17 @@ class LstmActorCriticNet(BaseNet):
       mean_list.append(mean)
       v_list.append(v)
 
-    action, log_prob, h_final, entropy, mean, v = [
-        torch.cat(i)
-        for i in [a_list, log_prob_list, h_list, ent_list, mean_list, v_list]
+    action, log_prob, h_out, entropy, mean, v = [
+        torch.cat(i) for i in
+        [a_list, log_prob_list, h_out_list, ent_list, mean_list, v_list]
     ]
+
     return {
+        'input_lstm_states': input_lstm_states,
+        'final_lstm_states': final_lstm_states,
         'a': action,
         'log_pi_a': log_prob,
-        'input_lstm_states': input_lstm_states,
-        'h_lstm_states': h_final,
-        'final_lstm_states': final_lstm_states,
+        'h_lstm_states': h_out,
         'ent': entropy,
         'mean': mean,
         'v': v
