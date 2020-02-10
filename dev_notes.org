@@ -1,4 +1,64 @@
 * lstm ppoc
+** Shapes
+
+#+BEGIN_SRC python
+def rollout():
+  for i in [states,self.prev_options,masks]:
+    print(i.shape)
+  # batch, feat_dim
+  states (9, 8)
+  prev_o torch.Size([9])
+  masks torch.Size([1, 9])
+
+  for k in prediction:
+    print(prediction[k].shape)
+  # batch, num_o, act_dim
+  mean torch.Size([9, 4, 2])
+  std torch.Size([9, 4, 2])
+  q_o torch.Size([9, 4])
+  pi_o torch.Size([9, 4])
+  log_pi_o torch.Size([9, 4])
+  beta torch.Size([9, 4])
+
+def compute_adv():
+  for i in [states,self.prev_options,storage.m[-1]]:
+    print(i.shape)
+  # batch, feat_dim
+  states (9, 8)
+  prev_o torch.Size([9])
+  # todo: to be switch axis
+  masks torch.Size([9, 1])
+
+  for k in prediction:
+    print(k, prediction[k].shape)
+  # batch, num_o, act_dim
+  mean torch.Size([9, 4, 2])
+  std torch.Size([9, 4, 2])
+  q_o torch.Size([9, 4])
+  pi_o torch.Size([9, 4])
+  log_pi_o torch.Size([9, 4])
+  beta torch.Size([9, 4])
+
+def learn():
+  for i in [states,prev_options,masks]:
+    print(i.shape)
+  # num*workers * rollout length
+  torch.Size([1800, 8])
+  torch.Size([1800, 1])
+  torch.Size([1800, 1])
+
+  for k in prediction:
+    print(k, prediction[k].shape)
+  # batch, num_o, act_dim
+  mean torch.Size([64, 4, 2])
+  std torch.Size([64, 4, 2])
+  q_o torch.Size([64, 4])
+  pi_o torch.Size([64, 4])
+  log_pi_o torch.Size([64, 4])
+  beta torch.Size([64, 4])
+
+#+END_SRC
+
 ** Possible Bugs
 *** Batch First
 Current implementation not right
