@@ -79,6 +79,7 @@ def ppo_continuous(**kwargs):
 
 # PPOC
 def ppoc_continuous(**kwargs):
+  kwargs['algo_tag'] = 'PPOC'
   generate_tag(kwargs)
   kwargs.setdefault('log_level', 0)
   kwargs.setdefault('num_o', 4)
@@ -141,7 +142,7 @@ def ppoc_lstm_continuous(**kwargs):
   config = Config()
   config.merge(kwargs)
 
-  config.num_workers = 8
+  config.num_workers = 9
   config.single_process = True
   config.task_fn = lambda: Task(
       config.game,
@@ -155,19 +156,15 @@ def ppoc_lstm_continuous(**kwargs):
   else:
     hidden_units = (64, 64)
   config.gate = nn.ReLU()
-  config.network_fn = lambda: OptionGaussianActorCriticNet(
-      config.state_dim,
-      config.action_dim,
-      num_options=config.num_o,
-      phi_body=DummyBody(config.state_dim),
-      actor_body=FCBody(
-          config.state_dim, hidden_units=hidden_units, gate=config.gate),
-      critic_body=FCBody(
-          config.state_dim, hidden_units=hidden_units, gate=config.gate),
-      option_body_fn=lambda: FCBody(
-          config.state_dim, hidden_units=hidden_units, gate=config.gate),
-  )
+
+  # lstm parameters
   config.hid_dim = 64
+  config.num_lstm_layers = 1
+  config.lstm_to_fc_feat_dim = config.num_lstm_layers * config.hid_dim
+  config.bi_direction = True
+  if config.bi_direction:
+    config.lstm_to_fc_feat_dim = config.lstm_to_fc_feat_dim * 2
+  config.lstm_dropout = 0
   config.network_fn = lambda: LstmOptionGaussianActorCriticNet(
       config.state_dim,
       config.action_dim,
@@ -274,7 +271,6 @@ if True:
       'RoboschoolHopper-v1', 'RoboschoolWalker2d-v1',
       'RoboschoolHalfCheetah-v1', 'RoboschoolAnt-v1', 'RoboschoolHumanoid-v1'
   ]
-  algo_tag = 'ppoc'
 
   game = 'CartPole-v0'
   # dqn_feature(game=game)
@@ -296,7 +292,7 @@ if True:
   # ppo_continuous(game=game)
   # ddpg_continuous(game=game)
   # td3_continuous(game=game)
-  ppoc_continuous(game=game, algo_tag=algo_tag)
+  ppoc_continuous(game=game)
 
   game = 'BreakoutNoFrameskip-v4'
   # dqn_pixel(game=game)

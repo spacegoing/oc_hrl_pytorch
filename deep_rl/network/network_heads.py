@@ -916,48 +916,263 @@ class SingleOptionNet(nn.Module):
     }
 
 
-class SingleLstmOptionNet(BaseNet):
+class OptionLstmGaussianActorCriticNet(BaseNet):
 
-  def __init__(self, action_dim, hid_dim, body_fn, config):
+  def __init__(self,
+               state_dim,
+               action_dim,
+               hid_dim,
+               phi_body=None,
+               actor_body=None,
+               critic_body=None,
+               config=None):
     super().__init__(config)
-    self.pi_body = body_fn()
-    self.beta_body = body_fn()
-    self.lstm_pi = lstm_init(
-        nn.LSTM(self.pi_body.feature_dim, hid_dim, batch_first=True), 1e-3)
-    self.lstm_beta = lstm_init(
-        nn.LSTM(self.beta_body.feature_dim, hid_dim, batch_first=True), 1e-3)
-    self.fc_pi = layer_init(nn.Linear(hid_dim, action_dim), 1e-3)
-    self.fc_beta = layer_init(nn.Linear(hid_dim, 1), 1e-3)
-    self.std = nn.Parameter(torch.zeros((1, action_dim)))
     self.is_recur = True
+    self.config = config
+    self.action_dim = action_dim
+    self.hid_dim = hid_dim
+    if config.bi_direction:
+      # h,c: (num_layers * num_directions, batch, hidden_size)
+      self.hid_size = [config.num_lstm_layers * 2, None, self.hid_dim]
+    else:
+      self.hid_size = [config.num_lstm_layers, None, self.hid_dim]
 
-  def forward(self, phi, pi_a_state, beta_state):
-    '''
-    pi_a_state: [(seq_len, batchsize, hid_dim), (seq_len, batchsize, hid_dim)]
-    beta_state: [(seq_len, batchsize, hid_dim), (seq_len, batchsize, hid_dim)]
+    if phi_body is None:
+      phi_body = DummyBody(state_dim)
+    if critic_body is None:
+      critic_body = DummyBody(config.lstm_to_fc_feat_dim)
+    if actor_body is None:
+      actor_body = DummyBody(config.lstm_to_fc_feat_dim)
 
-    for ppo, seq_len = 1
+    self.phi_body = phi_body
+    self.actor_body = actor_body
+    self.critic_body = critic_body
+
+    self.lstm = lstm_init(
+        nn.LSTM(
+            phi_body.feature_dim,
+            hid_dim,
+            num_layers=config.num_lstm_layers,
+            dropout=config.lstm_dropout,
+            bidirectional=config.bi_direction), 1e-3)
+
+    self.fc_action = layer_init(
+        nn.Linear(self.actor_body.feature_dim, action_dim), 1e-3)
+    self.fc_critic = layer_init(
+        nn.Linear(self.critic_body.feature_dim, 1), 1e-3)
+
+    # this is Config module, not self.config
+    # device is selected select_device() in main
+    self.std = nn.Parameter(torch.zeros(action_dim))
+    self.to(Config.DEVICE)
+
+  def forward(self, obs, input_lstm_states, masks, action_seq=None):
     '''
-    phi_pi = self.pi_body(phi)
-    _, pi_a_final_state = self.lstm_pi(phi_pi.unsqueeze(1), pi_a_state)
-    pi_a_hid_state = pi_a_final_state[0]
-    # pi_a_hid_state [seq_len, batchsize, hid_dim]
-    # here only have 1 timestep, use [0] to squeeze
-    mean = torch.tanh(self.fc_pi(pi_a_hid_state[0]))
+    Parameter:
+      obs: [timesteps, batch, feat_dim]
+      input_lstm_states: (h, c) h/c: [num_layers * num_directions, batch, hidden_size]
+      masks: [timesteps, batch]
+
+    Returns:
+      'input_lstm_states': [num_layers * num_directions, batch, hidden_size]
+      'final_lstm_states': [num_layers * num_directions, batch, hidden_size]
+      'a': [timesteps * batchsize, action_dim]
+      'log_pi_a': [timesteps * batchsize, 1]
+      'h_lstm_states': [timesteps * batchsize, hid_dim * num_layers * num_directions]
+      'ent': [timesteps * batchsize, 1]
+      'mean': [timesteps * batchsize, action_dim]
+      'v': [timesteps * batchsize, 1]
+    '''
+    obs = tensor(obs)
+    batch_size = masks.shape[1]
+
+    masks = tensor(masks)
+    # extends to [timesteps, batch, 1]
+    # so it can be broadcast to [num_layers * num_directions, batch, hidden_size]
+    # when multiplied with h and c
+    masks = masks.unsqueeze(-1)
+
+    phi = self.phi_body(obs)
+
+    # LSTM Loop
+    h_list = []
+    h_input, c_input = input_lstm_states
+    for p, m in zip(phi, masks):
+      h_input = h_input * m
+      c_input = c_input * m
+      _, final_lstm_states = self.lstm(p.unsqueeze(0), (h_input, c_input))
+      h_input, c_input = final_lstm_states
+      # h,c: (num_layers * num_directions, batch, hidden_size)
+      h_list.append(h_input)
+
+    # output (fc) layers loop
+    a_list = []
+    log_prob_list = []
+    ent_list = []
+    mean_list = []
+    v_list = []
+    h_out_list = []
+    for t, h in enumerate(h_list):
+      # flat h into [batch, feat_dim] shape (ffn's input)
+      # h: (num_layers * num_directions, batch, hidden_size)->
+      #    (batch, hidden_size * num_layers * num_directions)
+      h = h.permute([1, 0, 2]).reshape([batch_size, -1])
+      h_out_list.append(h)
+
+      phi_a = self.actor_body(h)
+      mean = torch.tanh(self.fc_action(phi_a))
+      dist = torch.distributions.Normal(mean, F.softplus(self.std))
+      # if action is not none, during PPO training stage
+      # action [timesteps, action_dim]
+      if action_seq is None:
+        action = dist.sample()
+      else:
+        action = action_seq[t]
+
+      phi_v = self.critic_body(h)
+      v = self.fc_critic(phi_v)
+      log_prob = dist.log_prob(action).sum(-1).unsqueeze(-1)
+      entropy = dist.entropy().sum(-1).unsqueeze(-1)
+
+      a_list.append(action)
+      log_prob_list.append(log_prob)
+      ent_list.append(entropy)
+      mean_list.append(mean)
+      v_list.append(v)
+
+    action, log_prob, h_out, entropy, mean, v = [
+        torch.cat(i) for i in
+        [a_list, log_prob_list, h_out_list, ent_list, mean_list, v_list]
+    ]
+
+    return {
+        'input_lstm_states': input_lstm_states,
+        'final_lstm_states': final_lstm_states,
+        'a': action,
+        'log_pi_a': log_prob,
+        'h_lstm_states': h_out,
+        'ent': entropy,
+        'mean': mean,
+        'v': v
+    }
+
+  def get_init_lstm_states(self, batchsize):
+    # h,c: (num_layers * num_directions, batch, hidden_size)
+    self.hid_size[1] = batchsize
+    init_states = (torch.zeros(self.hid_size, device=Config.DEVICE),
+                   torch.zeros(self.hid_size, device=Config.DEVICE))
+    return init_states
+
+
+
+class SingleOptionLstmNet(BaseNet):
+
+  def __init__(self, action_dim, hid_dim, phi_body_fn, config=None):
+    super().__init__(config)
+    self.is_recur = True
+    self.config = config
+    self.action_dim = action_dim
+    self.hid_dim = hid_dim
+
+    self.phi_body = phi_body_fn()
+
+    if config.bi_direction:
+      # h,c: (num_layers * num_directions, batch, hidden_size)
+      self.hid_size = [config.num_lstm_layers * 2, None, self.hid_dim]
+    else:
+      self.hid_size = [config.num_lstm_layers, None, self.hid_dim]
+
+    self.lstm = lstm_init(
+        nn.LSTM(
+            self.phi_body.feature_dim,
+            hid_dim,
+            num_layers=config.num_lstm_layers,
+            dropout=config.lstm_dropout,
+            bidirectional=config.bi_direction), 1e-3)
+
+    self.fc_mean = layer_init(
+        nn.Linear(config.lstm_to_fc_feat_dim, action_dim), 1e-3)
+    self.fc_beta = layer_init(nn.Linear(config.lstm_to_fc_feat_dim, 1), 1e-3)
+
+    # this is Config module, not self.config
+    # device is selected select_device() in main
+    self.std = nn.Parameter(torch.zeros(action_dim))
+    self.to(Config.DEVICE)
+
+  def forward(self, obs, masks, input_lstm_states=None):
+    '''
+    Parameter:
+      obs: [timesteps, batch, feat_dim]
+      input_lstm_states: (h, c) h/c: [num_layers * num_directions, batch, hidden_size]
+      masks: [timesteps, batch]
+
+    Returns:
+      'mean': [timesteps * batchsize, action_dim]
+      'std': [timesteps * batchsize, action_dim]
+      'beta': [timesteps * batchsize, 1]
+      'final_lstm_states': [num_layers * num_directions, batch, hidden_size]
+    '''
+    obs = tensor(obs)
+    batch_size = masks.shape[1]
+
+    masks = tensor(masks)
+    # extends to [timesteps, batch, 1]
+    # so it can be broadcast to [num_layers * num_directions, batch, hidden_size]
+    # when multiplied with h and c
+    masks = masks.unsqueeze(-1)
+
+    if not input_lstm_states:
+      input_lstm_states = self.get_init_lstm_states(batch_size)
+
+    phi = self.phi_body(obs)
+
+    # LSTM Loop
+    h_list = []
+    h_input, c_input = input_lstm_states
+    for p, m in zip(phi, masks):
+      h_input = h_input * m
+      c_input = c_input * m
+      _, final_lstm_states = self.lstm(p.unsqueeze(0), (h_input, c_input))
+      h_input, c_input = final_lstm_states
+      # h,c: (num_layers * num_directions, batch, hidden_size)
+      h_list.append(h_input)
+
+    # output (fc) layers loop
+    mean_list = []
+    beta_list = []
+    h_out_list = []
+    for h in h_list:
+      # flat h into [batch, feat_dim] shape (ffn's input)
+      # h: (num_layers * num_directions, batch, hidden_size)->
+      #    (batch, hidden_size * num_layers * num_directions)
+      h = h.permute([1, 0, 2]).reshape([batch_size, -1])
+      h_out_list.append(h)
+
+      mean = torch.tanh(self.fc_pi(h))
+      beta = F.softmax(self.fc_beta(h), dim=-1)
+
+      mean_list.append(mean)
+      beta_list.append(beta)
+
+    mean, beta, h_out = [
+        torch.cat(i) for i in [mean_list, beta_list, h_out_list]
+    ]
     std = F.softplus(self.std).expand(mean.size(0), -1)
-
-    phi_beta = self.beta_body(phi)
-    _, beta_final_state = self.lstm_beta(phi_beta.unsqueeze(1), beta_state)
-    beta_hid_state = beta_final_state[0]
-    beta = F.softmax(self.fc_beta(beta_hid_state[0]), dim=-1)
 
     return {
         'mean': mean,
-        'pi_a_final_state': pi_a_final_state,
-        'std': std,
         'beta': beta,
-        'beta_final_state': beta_final_state
+        'std': std,
+        'h_lstm_states': h_out,
+        'final_lstm_states': final_lstm_states
     }
+
+  def get_init_lstm_states(self, batchsize):
+    # h,c: (num_layers * num_directions, batch, hidden_size)
+    self.hid_size[1] = batchsize
+    init_states = (torch.zeros(self.hid_size, device=Config.DEVICE),
+                   torch.zeros(self.hid_size, device=Config.DEVICE))
+    return init_states
 
 
 class DeterministicOptionCriticNet(BaseNet):
