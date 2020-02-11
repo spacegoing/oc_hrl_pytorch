@@ -754,7 +754,7 @@ class OptionLstmGaussianActorCriticNet(BaseNet):
       input_lstm_states: (h, c) h/c: [num_layers * num_directions, batch, hidden_size]
       masks: [timesteps, batch]
       prev_options: [timesteps, batch]
-      input_option_lstm_states_list: [batch]: tuple(input_option_lstm_states)
+      input_option_lstm_states_list: [num_options]: tuple(input_option_lstm_states)
 
     Returns:
       'input_lstm_states': [num_layers * num_directions, batch, hidden_size]
@@ -880,6 +880,9 @@ class OptionLstmGaussianActorCriticNet(BaseNet):
     batch_size = prev_options.shape[0]
     aligned_input_options_lstm_states_list = self.get_init_options_lstm_states_list(
         batch_size)
+
+    if not input_options_lstm_states_list:
+      return aligned_input_options_lstm_states_list
 
     for batch_id, option_id in enumerate(prev_options):
       ih, ic = input_options_lstm_states_list[option_id]

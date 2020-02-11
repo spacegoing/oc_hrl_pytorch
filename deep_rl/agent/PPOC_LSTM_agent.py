@@ -8,6 +8,7 @@ from ..network import *
 from ..component import *
 from .BaseAgent import *
 from skimage import color
+from random import shuffle
 
 
 class PPOCLSTMAgent(BaseAgent):
@@ -55,9 +56,24 @@ class PPOCLSTMAgent(BaseAgent):
   def compute_adv(self, storage):
     config = self.config
     states = self.states
+    is_recur = self.network.is_recur
 
+    if is_recur:
+      # obs [num_workers, feat_dim] during rollout, only 1 time step
+      # extend to [timesteps, num_workers, feat_dim]
+      import ipdb
+      ipdb.set_trace(context=7)
+      states = states[np.newaxis, ...]
+      input_manager_lstm_states = storage.final_manager_lstm_states[-1]
+      input_options_lstm_states_list = storage.final_options_lstm_states_list[
+          -1]
+      masks = storage.m[-1]
+      prediction = self.network(states, masks, self.prev_options,
+                                input_manager_lstm_states,
+                                input_options_lstm_states_list)
+    else:
+      prediction = self.network(states)
     # select next option
-    prediction = self.network(states)
     pi_hat = self.compute_pi_hat(prediction, self.prev_options,
                                  self.is_initial_states)
     dist = torch.distributions.Categorical(pi_hat)
@@ -65,8 +81,9 @@ class PPOCLSTMAgent(BaseAgent):
 
     # storage next option data
     storage.add(prediction)
-    storage.add(
-        {'v': prediction['q_o'][self.worker_index, options].unsqueeze(-1)})
+    storage.add({
+        'v': prediction['q_o'][self.worker_index, options].unsqueeze(-1)
+    })
     storage.placeholder()
 
     # compute_adv main loop
@@ -82,10 +99,9 @@ class PPOCLSTMAgent(BaseAgent):
       if not config.use_gae:
         advantages = ret - v[i]
       else:
-        td_error = storage.r[i] + config.discount * storage.m[i] * v[i +
-                                                                     1] - v[i]
-        advantages = advantages * config.gae_tau * config.discount * storage.m[
-            i] + td_error
+        td_error = storage.r[i] + config.discount * storage.m[i] * v[i
+                                                                     + 1] - v[i]
+        advantages = advantages * config.gae_tau * config.discount * storage.m[i] + td_error
       adv[i] = advantages
       all_ret[i] = ret
 
@@ -94,11 +110,21 @@ class PPOCLSTMAgent(BaseAgent):
     states = self.states
     is_recur = self.network.is_recur
     masks = tensor(np.ones([1, config.num_workers]))
+    input_manager_lstm_states = None
+    input_options_lstm_states_list = None
 
     for _ in range(config.rollout_length):
 
+      if is_recur:
+        prediction = self.network(states, masks, self.prev_options,
+                                  input_manager_lstm_states,
+                                  input_options_lstm_states_list)
+        input_manager_lstm_states = prediction['final_manager_lstm_states']
+        input_options_lstm_states_list = prediction[
+            'final_options_lstm_states_list']
+      else:
+        prediction = self.network(states)
       # select option
-      prediction = self.network(states)
       pi_hat = self.compute_pi_hat(prediction, self.prev_options,
                                    self.is_initial_states)
       dist = torch.distributions.Categorical(probs=pi_hat)
@@ -149,13 +175,34 @@ class PPOCLSTMAgent(BaseAgent):
       self.total_steps += config.num_workers
       self.states = states
 
-  def _train_step(self, sampled_states, sampled_actions, sampled_options,
-                  sampled_log_pi_a_old, sampled_returns, sampled_advantages,
-                  sampled_inits, sampled_prev_options):
+  def _train_step(self,
+                  sampled_states,
+                  sampled_actions,
+                  sampled_options,
+                  sampled_log_pi_a_old,
+                  sampled_returns,
+                  sampled_advantages,
+                  sampled_inits,
+                  sampled_prev_options,
+                  sampled_masks=None,
+                  num_workers=None):
     config = self.config
+    is_recur = self.network.is_recur
 
-    prediction = self.network(sampled_states)
-    # todo: un exp
+    if is_recur:
+      sampled_states = sampled_states.reshape(
+          [config.rollout_length, num_workers, -1])
+      sampled_masks = sampled_masks.reshape(
+          [config.rollout_length, num_workers])
+      sampled_prev_options = sampled_prev_options.reshape(
+          [config.rollout_length, num_workers])
+      import ipdb
+      ipdb.set_trace(context=7)
+      prediction = self.network(sampled_states, sampled_masks,
+                                sampled_prev_options)
+    else:
+      prediction = self.network(sampled_states)
+
     pi_a = self.compute_log_pi_a(sampled_options, sampled_actions,
                                  prediction['mean'], prediction['std'])
     log_pi_a = pi_a.add(1e-5).log()
@@ -168,8 +215,8 @@ class PPOCLSTMAgent(BaseAgent):
     beta_adv = prediction['q_o'].gather(1, sampled_prev_options) - \
                 (prediction['q_o'] * prediction['pi_o']).sum(-1).unsqueeze(-1)
     beta_adv = beta_adv + config.beta_reg
-    beta_loss = prediction['beta'].gather(
-        1, sampled_prev_options) * (1 - sampled_inits).float() * beta_adv
+    beta_loss = prediction['beta'].gather(1, sampled_prev_options) * (
+        1 - sampled_inits).float() * beta_adv
     beta_loss = beta_loss.mean()
 
     q_loss = (prediction['q_o'].gather(1, sampled_options) -
@@ -186,28 +233,82 @@ class PPOCLSTMAgent(BaseAgent):
 
   def learn(self, storage):
     # training
-
     config = self.config
+    is_recur = self.network.is_recur
+
     states, actions, log_pi_a_old, options, returns, advantages, inits, prev_options, masks = storage.cat(
         ['s', 'a', 'log_pi_a', 'o', 'ret', 'adv', 'init', 'prev_o', 'm'])
     advantages = (advantages - advantages.mean()) / advantages.std()
 
     for _ in range(config.optimization_epochs):
-      sampler = random_sample(np.arange(states.size(0)), config.mini_batch_size)
-      for batch_indices in sampler:
-        batch_indices = tensor(batch_indices).long()
-        sampled_states = states[batch_indices]
-        sampled_actions = actions[batch_indices]
-        sampled_options = options[batch_indices]
-        sampled_log_pi_a_old = log_pi_a_old[batch_indices]
-        sampled_returns = returns[batch_indices]
-        sampled_advantages = advantages[batch_indices]
-        sampled_inits = inits[batch_indices]
-        sampled_prev_options = prev_options[batch_indices]
-        self._train_step(sampled_states, sampled_actions, sampled_options,
-                         sampled_log_pi_a_old, sampled_returns,
-                         sampled_advantages, sampled_inits,
-                         sampled_prev_options)
+      if is_recur:
+        states, actions, log_pi_a_old, options, \
+          returns, advantages, inits, prev_options, masks = [
+            i.reshape([config.rollout_length, config.num_workers, -1])
+            for i in [
+                states, actions, log_pi_a_old, options, returns, advantages,
+                inits, prev_options, masks
+            ]
+        ]
+        worker_idxs = list(range(self.config.num_workers))
+        shuffle(worker_idxs)
+        for start_worker_idx in range(0, self.config.num_workers, 3):
+          input_manager_lstm_states = None
+          input_options_lstm_states_list = None
+          batch_indices = worker_idxs[start_worker_idx:start_worker_idx + 3]
+          num_workers = len(batch_indices)
+          sampled_states = states[:, batch_indices, :]
+          sampled_actions = actions[:, batch_indices, :]
+          sampled_options = options[:, batch_indices, :]
+          sampled_log_pi_a_old = log_pi_a_old[:, batch_indices, :]
+          sampled_returns = returns[:, batch_indices, :]
+          sampled_advantages = advantages[:, batch_indices, :]
+          sampled_inits = inits[:, batch_indices, :]
+          sampled_prev_options = prev_options[:, batch_indices, :]
+          sampled_masks = masks[:, batch_indices, :]
+
+          # reshape to [rollout * batch, feat_dim]
+          sampled_states, sampled_actions, \
+            sampled_options, sampled_log_pi_a_old, sampled_returns, \
+            sampled_advantages, sampled_inits, sampled_prev_options, sampled_masks = [
+              i.reshape([config.rollout_length * num_workers, -1]) for i in [
+                  sampled_states, sampled_actions, sampled_options,
+                  sampled_log_pi_a_old, sampled_returns, sampled_advantages,
+                  sampled_inits, sampled_prev_options, sampled_masks
+              ]
+          ]
+          import ipdb
+          ipdb.set_trace(context=7)
+          self._train_step(
+              sampled_states,
+              sampled_actions,
+              sampled_options,
+              sampled_log_pi_a_old,
+              sampled_returns,
+              sampled_advantages,
+              sampled_inits,
+              sampled_prev_options,
+              sampled_masks=None,
+              input_manager_lstm_states=None,
+              input_options_lstm_states_list=None,
+              num_workers=None)
+      else:
+        sampler = random_sample(
+            np.arange(states.size(0)), config.mini_batch_size)
+        for batch_indices in sampler:
+          batch_indices = tensor(batch_indices).long()
+          sampled_states = states[batch_indices]
+          sampled_actions = actions[batch_indices]
+          sampled_options = options[batch_indices]
+          sampled_log_pi_a_old = log_pi_a_old[batch_indices]
+          sampled_returns = returns[batch_indices]
+          sampled_advantages = advantages[batch_indices]
+          sampled_inits = inits[batch_indices]
+          sampled_prev_options = prev_options[batch_indices]
+          self._train_step(sampled_states, sampled_actions, sampled_options,
+                           sampled_log_pi_a_old, sampled_returns,
+                           sampled_advantages, sampled_inits,
+                           sampled_prev_options)
 
   def step(self):
     config = self.config
