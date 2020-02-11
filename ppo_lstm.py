@@ -158,6 +158,7 @@ def ppoc_lstm_continuous(**kwargs):
   config.gate = nn.ReLU()
 
   # lstm parameters
+  config.debug=False
   config.hid_dim = 64
   config.num_lstm_layers = 1
   config.lstm_to_fc_feat_dim = config.num_lstm_layers * config.hid_dim
@@ -165,24 +166,22 @@ def ppoc_lstm_continuous(**kwargs):
   if config.bi_direction:
     config.lstm_to_fc_feat_dim = config.lstm_to_fc_feat_dim * 2
   config.lstm_dropout = 0
-  config.network_fn = lambda: LstmOptionGaussianActorCriticNet(
+  config.network_fn = lambda: OptionLstmGaussianActorCriticNet(
       config.state_dim,
       config.action_dim,
       num_options=config.num_o,
       hid_dim=config.hid_dim,
       phi_body=DummyBody(config.state_dim),
-      actor_body=FCBody(
-          config.state_dim, hidden_units=hidden_units, gate=config.gate),
-      critic_body=FCBody(
-          config.state_dim, hidden_units=hidden_units, gate=config.gate),
       option_body_fn=lambda: FCBody(
-          config.state_dim, hidden_units=hidden_units, gate=config.gate),
+          config.state_dim,
+          hidden_units=hidden_units,
+          gate=config.gate),
       config=config)
   config.optimizer_fn = lambda params: torch.optim.Adam(params, 3e-4, eps=1e-5)
   config.gradient_clip = 0.5
 
   config.discount = 0.99
-  config.rollout_length = 2048
+  config.rollout_length = 23
   config.max_steps = 1e9
   config.state_normalizer = MeanStdNormalizer()
   config.log_interval = 2048
@@ -201,7 +200,7 @@ def ppoc_lstm_continuous(**kwargs):
   config.beta_reg = 0.01
   config.delib_cost = 0.01
 
-  run_steps(PPOCAgent(config))
+  run_steps(PPOCLSTMAgent(config))
 
 
 def ppo_lstm_continuous(**kwargs):
@@ -292,6 +291,7 @@ if True:
   # ppo_continuous(game=game)
   # ddpg_continuous(game=game)
   # td3_continuous(game=game)
+  ppoc_lstm_continuous(game=game)
   ppoc_continuous(game=game)
 
   game = 'BreakoutNoFrameskip-v4'

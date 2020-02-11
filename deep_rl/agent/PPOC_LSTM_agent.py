@@ -81,9 +81,8 @@ class PPOCLSTMAgent(BaseAgent):
 
     # storage next option data
     storage.add(prediction)
-    storage.add({
-        'v': prediction['q_o'][self.worker_index, options].unsqueeze(-1)
-    })
+    storage.add(
+        {'v': prediction['q_o'][self.worker_index, options].unsqueeze(-1)})
     storage.placeholder()
 
     # compute_adv main loop
@@ -99,9 +98,10 @@ class PPOCLSTMAgent(BaseAgent):
       if not config.use_gae:
         advantages = ret - v[i]
       else:
-        td_error = storage.r[i] + config.discount * storage.m[i] * v[i
-                                                                     + 1] - v[i]
-        advantages = advantages * config.gae_tau * config.discount * storage.m[i] + td_error
+        td_error = storage.r[i] + config.discount * storage.m[i] * v[i +
+                                                                     1] - v[i]
+        advantages = advantages * config.gae_tau * config.discount * storage.m[
+            i] + td_error
       adv[i] = advantages
       all_ret[i] = ret
 
@@ -116,7 +116,9 @@ class PPOCLSTMAgent(BaseAgent):
     for _ in range(config.rollout_length):
 
       if is_recur:
-        prediction = self.network(states, masks, self.prev_options,
+        seq_states = states[np.newaxis, ...]
+        seq_prev_options = self.prev_options.unsqueeze(0)
+        prediction = self.network(seq_states, masks, seq_prev_options,
                                   input_manager_lstm_states,
                                   input_options_lstm_states_list)
         input_manager_lstm_states = prediction['final_manager_lstm_states']
@@ -175,6 +177,9 @@ class PPOCLSTMAgent(BaseAgent):
       self.total_steps += config.num_workers
       self.states = states
 
+      if is_recur:
+        masks = masks.permute([1, 0])
+
   def _train_step(self,
                   sampled_states,
                   sampled_actions,
@@ -215,8 +220,8 @@ class PPOCLSTMAgent(BaseAgent):
     beta_adv = prediction['q_o'].gather(1, sampled_prev_options) - \
                 (prediction['q_o'] * prediction['pi_o']).sum(-1).unsqueeze(-1)
     beta_adv = beta_adv + config.beta_reg
-    beta_loss = prediction['beta'].gather(1, sampled_prev_options) * (
-        1 - sampled_inits).float() * beta_adv
+    beta_loss = prediction['beta'].gather(
+        1, sampled_prev_options) * (1 - sampled_inits).float() * beta_adv
     beta_loss = beta_loss.mean()
 
     q_loss = (prediction['q_o'].gather(1, sampled_options) -

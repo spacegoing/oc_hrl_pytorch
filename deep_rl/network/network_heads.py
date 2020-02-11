@@ -53,8 +53,8 @@ class CategoricalNet(BaseNet):
 
   def forward(self, x):
     phi = self.body(tensor(x))
-    pre_prob = self.fc_categorical(phi).view((-1, self.action_dim,
-                                              self.num_atoms))
+    pre_prob = self.fc_categorical(phi).view(
+        (-1, self.action_dim, self.num_atoms))
     prob = F.softmax(pre_prob, dim=-1)
     log_prob = F.log_softmax(pre_prob, dim=-1)
     return prob, log_prob
@@ -692,8 +692,6 @@ class OptionLstmGaussianActorCriticNet(BaseNet):
                hid_dim,
                num_options,
                phi_body=None,
-               actor_body=None,
-               critic_body=None,
                option_body_fn=None,
                config=None):
     super().__init__(config)
@@ -711,14 +709,8 @@ class OptionLstmGaussianActorCriticNet(BaseNet):
 
     if phi_body is None:
       phi_body = DummyBody(state_dim)
-    if critic_body is None:
-      critic_body = DummyBody(config.lstm_to_fc_feat_dim)
-    if actor_body is None:
-      actor_body = DummyBody(config.lstm_to_fc_feat_dim)
 
     self.phi_body = phi_body
-    self.actor_body = actor_body
-    self.critic_body = critic_body
 
     self.lstm = lstm_init(
         nn.LSTM(
@@ -729,8 +721,9 @@ class OptionLstmGaussianActorCriticNet(BaseNet):
             bidirectional=config.bi_direction), 1e-3)
 
     self.fc_pi_o = layer_init(
-        nn.Linear(config.lstm_to_fc_feat_dim, action_dim), 1e-3)
-    self.fc_q_o = layer_init(nn.Linear(config.lstm_to_fc_feat_dim, 1), 1e-3)
+        nn.Linear(config.lstm_to_fc_feat_dim, num_options), 1e-3)
+    self.fc_q_o = layer_init(
+        nn.Linear(config.lstm_to_fc_feat_dim, num_options), 1e-3)
 
     # build option network
     self.options = nn.ModuleList([
@@ -787,8 +780,7 @@ class OptionLstmGaussianActorCriticNet(BaseNet):
       h_input = h_input * m
       c_input = c_input * m
       _, final_manager_lstm_states = self.lstm(
-          p.unsqueeze(0),
-          (h_input, c_input))
+          p.unsqueeze(0), (h_input, c_input))
       h_input, c_input = final_manager_lstm_states
       # h,c: (num_layers * num_directions, batch, hidden_size)
       h_list.append(h_input)
@@ -804,13 +796,12 @@ class OptionLstmGaussianActorCriticNet(BaseNet):
       h = h.permute([1, 0, 2]).reshape([batch_size, -1])
 
       # policy over option with soft-max
-      phi_a = self.actor_body(h)
+      phi_a = self.fc_pi_o(h)
       pi_o = F.softmax(phi_a, dim=-1)
       log_pi_o = F.log_softmax(phi_a, dim=-1)
 
       # critic network
-      phi_c = self.critic_body(phi)
-      q_o = self.fc_q_o(phi_c)
+      q_o = self.fc_q_o(h)
 
       pi_o_list.append(pi_o)
       log_pi_o_list.append(log_pi_o)
@@ -819,18 +810,22 @@ class OptionLstmGaussianActorCriticNet(BaseNet):
     pi_o, log_pi_o, q_o = [
         torch.cat(i) for i in [pi_o_list, log_pi_o_list, q_o_list]
     ]
+    if self.config.debug:
+      import ipdb
+      ipdb.set_trace(context=7)
 
     # option
     mean = []
     std = []
     beta = []
     h_lstm_states_list = []
-    final_option_lstm_states_list = []
+    final_options_lstm_states_list = []
 
-    # pause: how to deal with prev_options
-    # agent: how to deal with prev_options | h_states
+    masks = masks.squeeze(-1)
+
     aligned_input_options_lstm_states_list = self.get_aligned_input_options_lstm_states_list(
         input_options_lstm_states_list, prev_options[0])
+
     for o, option in enumerate(self.options):
       aligned_masks = self.get_aligned_options_masks(masks, prev_options, o)
       prediction = option(phi, aligned_masks,
@@ -839,10 +834,13 @@ class OptionLstmGaussianActorCriticNet(BaseNet):
       std.append(prediction['std'].unsqueeze(1))
       beta.append(prediction['beta'])
       h_lstm_states_list.append(prediction['h_lstm_states'])
-      final_option_lstm_states_list.append(prediction['final_lstm_states'])
+      final_options_lstm_states_list.append(prediction['final_lstm_states'])
     mean = torch.cat(mean, dim=1)
     std = torch.cat(std, dim=1)
     beta = torch.cat(beta, dim=1)
+    if self.config.debug:
+      import ipdb
+      ipdb.set_trace(context=7)
 
     return {
         'pi_o': pi_o,
@@ -853,7 +851,7 @@ class OptionLstmGaussianActorCriticNet(BaseNet):
         'std': std,
         'beta': beta,
         'h_lstm_states_list': h_lstm_states_list,
-        'final_option_lstm_states_list': final_option_lstm_states_list
+        'final_options_lstm_states_list': final_options_lstm_states_list
     }
 
   def get_init_lstm_states(self, batchsize):
@@ -871,8 +869,9 @@ class OptionLstmGaussianActorCriticNet(BaseNet):
           self.options[i].get_init_lstm_states(batchsize))
     return options_lstm_states_list
 
-  def get_aligned_input_options_lstm_states_list(
-      self, input_options_lstm_states_list, prev_options):
+  def get_aligned_input_options_lstm_states_list(self,
+                                                 input_options_lstm_states_list,
+                                                 prev_options):
     '''
     input_option_lstm_states_list: list[num_options]; contains tuple of lstm states (h,c)
     prev_options: [batchsize]; each entry is option id selected at t-1 time
@@ -897,12 +896,13 @@ class OptionLstmGaussianActorCriticNet(BaseNet):
     masks: [timesteps, batch]
     prev_options: [timesteps, batch]
     '''
-    aligned_masks = masks.copy()
-    for m, o in zip(aligned_masks, prev_options):
-      o = o == option_id
-      m = m * o
+    aligned_masks = masks.clone()
+    if self.config.debug:
       import ipdb
       ipdb.set_trace(context=7)
+    for m, o in zip(aligned_masks, prev_options):
+      o = o == option_id
+      m = m * o.float()
     return aligned_masks
 
 
@@ -978,6 +978,9 @@ class SingleOptionLstmNet(BaseNet):
       # h,c: (num_layers * num_directions, batch, hidden_size)
       h_list.append(h_input)
 
+    if self.config.debug:
+      import ipdb
+      ipdb.set_trace(context=7)
     # output (fc) layers loop
     mean_list = []
     beta_list = []
@@ -989,7 +992,7 @@ class SingleOptionLstmNet(BaseNet):
       h = h.permute([1, 0, 2]).reshape([batch_size, -1])
       h_out_list.append(h)
 
-      mean = torch.tanh(self.fc_pi(h))
+      mean = torch.tanh(self.fc_mean(h))
       beta = F.softmax(self.fc_beta(h), dim=-1)
 
       mean_list.append(mean)
@@ -999,6 +1002,9 @@ class SingleOptionLstmNet(BaseNet):
         torch.cat(i) for i in [mean_list, beta_list, h_out_list]
     ]
     std = F.softplus(self.std).expand(mean.size(0), -1)
+    if self.config.debug:
+      import ipdb
+      ipdb.set_trace(context=7)
 
     return {
         'mean': mean,
@@ -1056,8 +1062,8 @@ class DeterministicOptionCriticNet(BaseNet):
     self.phi_params = list(self.phi_body.parameters())
 
     self.actor_opt = actor_opt_fn(self.actor_params + self.phi_params)
-    self.critic_opt = critic_opt_fn(
-        self.critic_params + self.phi_params + self.beta_params)
+    self.critic_opt = critic_opt_fn(self.critic_params + self.phi_params +
+                                    self.beta_params)
 
     # self.set_gpu(gpu)
 
