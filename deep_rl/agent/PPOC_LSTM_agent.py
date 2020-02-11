@@ -61,14 +61,15 @@ class PPOCLSTMAgent(BaseAgent):
     if is_recur:
       # obs [num_workers, feat_dim] during rollout, only 1 time step
       # extend to [timesteps, num_workers, feat_dim]
-      import ipdb
-      ipdb.set_trace(context=7)
-      states = states[np.newaxis, ...]
+      seq_states = states[np.newaxis, ...]
+      seq_prev_options = self.prev_options.unsqueeze(0)
+      masks = storage.m[-1].permute([1, 0])
+
       input_manager_lstm_states = storage.final_manager_lstm_states[-1]
       input_options_lstm_states_list = storage.final_options_lstm_states_list[
           -1]
-      masks = storage.m[-1]
-      prediction = self.network(states, masks, self.prev_options,
+
+      prediction = self.network(seq_states, masks, seq_prev_options,
                                 input_manager_lstm_states,
                                 input_options_lstm_states_list)
     else:
@@ -201,10 +202,10 @@ class PPOCLSTMAgent(BaseAgent):
           [config.rollout_length, num_workers])
       sampled_prev_options = sampled_prev_options.reshape(
           [config.rollout_length, num_workers])
-      import ipdb
-      ipdb.set_trace(context=7)
       prediction = self.network(sampled_states, sampled_masks,
                                 sampled_prev_options)
+      sampled_prev_options = sampled_prev_options.reshape(
+          [config.rollout_length * num_workers, -1])
     else:
       prediction = self.network(sampled_states)
 
@@ -258,8 +259,6 @@ class PPOCLSTMAgent(BaseAgent):
         worker_idxs = list(range(self.config.num_workers))
         shuffle(worker_idxs)
         for start_worker_idx in range(0, self.config.num_workers, 3):
-          input_manager_lstm_states = None
-          input_options_lstm_states_list = None
           batch_indices = worker_idxs[start_worker_idx:start_worker_idx + 3]
           num_workers = len(batch_indices)
           sampled_states = states[:, batch_indices, :]
@@ -282,21 +281,10 @@ class PPOCLSTMAgent(BaseAgent):
                   sampled_inits, sampled_prev_options, sampled_masks
               ]
           ]
-          import ipdb
-          ipdb.set_trace(context=7)
-          self._train_step(
-              sampled_states,
-              sampled_actions,
-              sampled_options,
-              sampled_log_pi_a_old,
-              sampled_returns,
-              sampled_advantages,
-              sampled_inits,
-              sampled_prev_options,
-              sampled_masks=None,
-              input_manager_lstm_states=None,
-              input_options_lstm_states_list=None,
-              num_workers=None)
+          self._train_step(sampled_states, sampled_actions, sampled_options,
+                           sampled_log_pi_a_old, sampled_returns,
+                           sampled_advantages, sampled_inits,
+                           sampled_prev_options, sampled_masks, num_workers)
       else:
         sampler = random_sample(
             np.arange(states.size(0)), config.mini_batch_size)
