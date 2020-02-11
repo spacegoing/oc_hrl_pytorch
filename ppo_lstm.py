@@ -133,14 +133,17 @@ def ppoc_continuous(**kwargs):
 
 
 def ppoc_lstm_continuous(**kwargs):
-  # debug:
-  # kwargs={'game':game}
-  kwargs['algo_tag'] = 'PPOC_LSTM'
+  config = Config()
+  config.use_gae = False
+  config.rollout_length = 32
+  gstr = 'False'
+  if config.use_gae:
+    gstr = 'True'
+  kwargs['algo_tag'] = 'PPOC_LSTM_GAE_%s_%d' % (gstr, config.rollout_length)
   generate_tag(kwargs)
   kwargs.setdefault('log_level', 0)
   kwargs.setdefault('learning', 'all')
   kwargs.setdefault('tasks', False)
-  config = Config()
   config.merge(kwargs)
 
   config.num_workers = 9
@@ -159,7 +162,7 @@ def ppoc_lstm_continuous(**kwargs):
   config.gate = nn.ReLU()
 
   # lstm parameters
-  config.debug=False
+  config.debug = False
   config.hid_dim = 64
   config.num_lstm_layers = 1
   config.lstm_to_fc_feat_dim = config.num_lstm_layers * config.hid_dim
@@ -174,15 +177,12 @@ def ppoc_lstm_continuous(**kwargs):
       hid_dim=config.hid_dim,
       phi_body=DummyBody(config.state_dim),
       option_body_fn=lambda: FCBody(
-          config.state_dim,
-          hidden_units=hidden_units,
-          gate=config.gate),
+          config.state_dim, hidden_units=hidden_units, gate=config.gate),
       config=config)
   config.optimizer_fn = lambda params: torch.optim.Adam(params, 3e-4, eps=1e-5)
   config.gradient_clip = 0.5
 
   config.discount = 0.99
-  config.rollout_length = 32
   config.max_steps = 1e9
   config.state_normalizer = MeanStdNormalizer()
   config.log_interval = 2048
@@ -192,7 +192,6 @@ def ppoc_lstm_continuous(**kwargs):
   config.optimization_epochs = 10
   config.mini_batch_size = 64
   # model params
-  config.use_gae = True
   config.gae_tau = 0.95
   config.ppo_ratio_clip = 0.2
   config.entropy_weight = 0.01
@@ -205,10 +204,15 @@ def ppoc_lstm_continuous(**kwargs):
 
 
 def ppo_lstm_continuous(**kwargs):
-  kwargs['algo_tag'] = 'PPO_LSTM'
+  config = Config()
+  config.use_gae = False
+  config.rollout_length = 32
+  gstr = 'False'
+  if config.use_gae:
+    gstr = 'True'
+  kwargs['algo_tag'] = 'PPO_LSTM_GAE_%s_%d' % (gstr, config.rollout_length)
   generate_tag(kwargs)
   kwargs.setdefault('log_level', 0)
-  config = Config()
   config.merge(kwargs)
 
   config.num_workers = 9  # must greater than 3
@@ -239,7 +243,6 @@ def ppo_lstm_continuous(**kwargs):
   config.gradient_clip = 0.5
 
   config.discount = 0.99
-  config.rollout_length = 32
   config.max_steps = 1e9
   config.state_normalizer = MeanStdNormalizer()
   config.log_interval = 2048
@@ -249,7 +252,6 @@ def ppo_lstm_continuous(**kwargs):
   config.optimization_epochs = 10
   config.mini_batch_size = 64
   # model params
-  config.use_gae = True
   config.gae_tau = 0.95
   config.ppo_ratio_clip = 0.2
   config.entropy_weight = 0.01
@@ -267,7 +269,7 @@ if True:
   set_one_thread()
   random_seed()
   # select_device(-1)
-  select_device(0)
+  select_device(1)
   env_list = [
       'RoboschoolHopper-v1', 'RoboschoolWalker2d-v1',
       'RoboschoolHalfCheetah-v1', 'RoboschoolAnt-v1', 'RoboschoolHumanoid-v1'
