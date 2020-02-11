@@ -295,6 +295,7 @@ if True:
   # ppo_continuous(game=game)
   # ddpg_continuous(game=game)
   # td3_continuous(game=game)
+  game = 'CSI300-v1'
   ppo_lstm_continuous(game=game)
   ppoc_lstm_continuous(game=game)
   ppoc_continuous(game=game)
