@@ -75,8 +75,7 @@ class PPOAgent(BaseAgent):
         # obs [num_workers, feat_dim] during rollout, only 1 time step
         # extend to [timesteps, num_workers, feat_dim]
         states = states[np.newaxis, ...]
-        # todo: use storage.m[-1] instead of new one
-        masks = np.ones([1, config.num_workers])
+        masks = storage.m[-1].permute([1, 0])
         prediction = self.network(states, storage.final_lstm_states[-1], masks)
       else:
         prediction = self.network(states)
@@ -133,7 +132,6 @@ class PPOAgent(BaseAgent):
     (policy_loss + value_loss).backward()
     nn.utils.clip_grad_norm_(self.network.parameters(), config.gradient_clip)
     self.opt.step()
-
 
   def step(self):
     config = self.config

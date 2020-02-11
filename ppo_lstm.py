@@ -135,6 +135,7 @@ def ppoc_continuous(**kwargs):
 def ppoc_lstm_continuous(**kwargs):
   # debug:
   # kwargs={'game':game}
+  kwargs['algo_tag'] = 'PPOC_LSTM'
   generate_tag(kwargs)
   kwargs.setdefault('log_level', 0)
   kwargs.setdefault('learning', 'all')
@@ -181,7 +182,7 @@ def ppoc_lstm_continuous(**kwargs):
   config.gradient_clip = 0.5
 
   config.discount = 0.99
-  config.rollout_length = 23
+  config.rollout_length = 32
   config.max_steps = 1e9
   config.state_normalizer = MeanStdNormalizer()
   config.log_interval = 2048
@@ -191,7 +192,7 @@ def ppoc_lstm_continuous(**kwargs):
   config.optimization_epochs = 10
   config.mini_batch_size = 64
   # model params
-  config.use_gae = False
+  config.use_gae = True
   config.gae_tau = 0.95
   config.ppo_ratio_clip = 0.2
   config.entropy_weight = 0.01
@@ -204,6 +205,7 @@ def ppoc_lstm_continuous(**kwargs):
 
 
 def ppo_lstm_continuous(**kwargs):
+  kwargs['algo_tag'] = 'PPO_LSTM'
   generate_tag(kwargs)
   kwargs.setdefault('log_level', 0)
   config = Config()
@@ -291,6 +293,7 @@ if True:
   # ppo_continuous(game=game)
   # ddpg_continuous(game=game)
   # td3_continuous(game=game)
+  ppo_lstm_continuous(game=game)
   ppoc_lstm_continuous(game=game)
   ppoc_continuous(game=game)
 
