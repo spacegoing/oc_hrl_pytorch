@@ -53,8 +53,8 @@ class CategoricalNet(BaseNet):
 
   def forward(self, x):
     phi = self.body(tensor(x))
-    pre_prob = self.fc_categorical(phi).view(
-        (-1, self.action_dim, self.num_atoms))
+    pre_prob = self.fc_categorical(phi).view((-1, self.action_dim,
+                                              self.num_atoms))
     prob = F.softmax(pre_prob, dim=-1)
     log_prob = F.log_softmax(pre_prob, dim=-1)
     return prob, log_prob
@@ -517,238 +517,6 @@ class OptionGaussianActorCriticNet(BaseNet):
     }
 
 
-class LstmOptionGaussianActorCriticNet(BaseNet):
-
-  def __init__(self,
-               state_dim,
-               action_dim,
-               num_options,
-               hid_dim,
-               phi_body=None,
-               actor_body=None,
-               critic_body=None,
-               option_body_fn=None,
-               config=None):
-    super().__init__(config)
-    self.is_recur = True
-
-    if phi_body is None:
-      phi_body = DummyBody(state_dim)
-    if critic_body is None:
-      critic_body = DummyBody(phi_body.feature_dim)
-    if actor_body is None:
-      actor_body = DummyBody(phi_body.feature_dim)
-
-    self.phi_body = phi_body
-    self.actor_body = actor_body
-    self.critic_body = critic_body
-
-    # build option network
-    self.options = nn.ModuleList([
-        SingleLstmOptionNet(action_dim, hid_dim, option_body_fn, config)
-        for _ in range(num_options)
-    ])
-
-    # linear output
-    self.lstm_pi_o = lstm_init(
-        nn.LSTM(actor_body.feature_dim, hid_dim, batch_first=True), 1e-3)
-    self.fc_pi_o = layer_init(nn.Linear(hid_dim, num_options), 1e-3)
-
-    self.lstm_q_o = lstm_init(
-        nn.LSTM(critic_body.feature_dim, hid_dim, batch_first=True), 1e-3)
-    self.fc_q_o = layer_init(nn.Linear(hid_dim, num_options), 1e-3)
-
-    self.num_options = num_options
-    self.action_dim = action_dim
-    self.hid_dim = hid_dim
-    # this is Config module, not self.config
-    # device is selected select_device() in main
-    self.to(Config.DEVICE)
-
-  def forward(self, obs, pi_o_final_states, q_o_final_states,
-              all_option_final_states, prev_options, masks):
-    '''
-    pi_o_states: [(seq_len, batchsize, hid_dim), (seq_len, batchsize, hid_dim)]
-    q_o_states: [(seq_len, batchsize, hid_dim), (seq_len, batchsize, hid_dim)]
-    option_states: [pi_a_states, beta_states]
-    prev_option: int. prev selected option
-
-    other than prev_option using option_states, other options using zero states
-
-    returns:
-    all_option_final_states: list:[num_options] each entry: [pi_a_final_state, beta_final_state]
-    '''
-
-    obs = tensor(obs)
-
-    def _one_step_forward(obs, pi_o_final_states, q_o_final_states,
-                          all_option_final_states, prev_options, batchsize,
-                          masks):
-      all_option_final_states = self.assign_option_init_states(
-          prev_options, all_option_final_states, batchsize, masks)
-      pi_o_final_states = self.get_masked_manager_lstm_states(
-          pi_o_final_states, masks)
-      q_o_final_states = self.get_masked_manager_lstm_states(
-          q_o_final_states, masks)
-      phi = self.phi_body(obs)
-
-      # option
-      mean = []
-      std = []
-      beta = []
-      new_option_final_states = []
-
-      for option_idx, [pi_a_final_states,
-                       beta_final_states] in enumerate(all_option_final_states):
-        prediction = self.options[option_idx](phi, pi_a_final_states,
-                                              beta_final_states)
-        mean.append(prediction['mean'].unsqueeze(1))
-        std.append(prediction['std'].unsqueeze(1))
-        beta.append(prediction['beta'])
-        new_option_final_states.append(
-            (prediction['pi_a_final_state'], prediction['beta_final_state']))
-      mean = torch.cat(mean, dim=1)
-      std = torch.cat(std, dim=1)
-      beta = torch.cat(beta, dim=1)
-
-      # policy over option with soft-max
-      phi_a = self.actor_body(phi)
-      # final_states = (hid_state, cell_state)
-      _, pi_o_final_states = self.lstm_pi_o(
-          phi_a.unsqueeze(1), pi_o_final_states)
-      pi_o_hid_state = pi_o_final_states[0]
-      # pi_o_hid_state [seq_len, batchsize, hid_dim]
-      # here only have 1 timestep, use [0] to squeeze
-      phi_a = self.fc_pi_o(pi_o_hid_state[0])
-      pi_o = F.softmax(phi_a, dim=-1)
-      log_pi_o = F.log_softmax(phi_a, dim=-1)
-
-      # critic network
-      phi_c = self.critic_body(phi)
-      _, q_o_final_states = self.lstm_q_o(phi_c.unsqueeze(1), q_o_final_states)
-      q_o_hid_state = q_o_final_states[0]
-      q_o = self.fc_q_o(q_o_hid_state[0])
-
-      return {
-          'mean': mean,
-          'std': std,
-          'beta': beta,
-          'pi_o': pi_o,
-          'log_pi_o': log_pi_o,
-          'pi_o_final_states': pi_o_final_states,
-          'q_o': q_o,
-          'q_o_final_states': q_o_final_states,
-          'all_option_final_states': new_option_final_states
-      }
-
-    if len(obs.shape) == 2:
-      return _one_step_forward(obs, pi_o_final_states, q_o_final_states,
-                               all_option_final_states, prev_options,
-                               self.config.num_workers, masks)
-    else:
-      seq_len = obs.shape[1]
-      result_dict = {
-          'mean': [],
-          'std': [],
-          'beta': [],
-          'pi_o': [],
-          'log_pi_o': [],
-          'q_o': []
-      }
-      for i in range(seq_len):
-        prediction = _one_step_forward(obs[:, i, :], pi_o_final_states,
-                                       q_o_final_states,
-                                       all_option_final_states,
-                                       prev_options[:, i, :], obs.shape[0],
-                                       masks[:, i, :])
-        for k in result_dict:
-          result_dict[k].append(prediction[k])
-        pi_o_final_states, q_o_final_states,\
-        all_option_final_states = prediction['pi_o_final_states'],\
-                                  prediction['q_o_final_states'],\
-                                  prediction['all_option_final_states']
-      for k in result_dict:
-        result_dict[k] = torch.stack(
-            result_dict[k], dim=1).view(prediction[k].shape[0] * seq_len,
-                                        *prediction[k].shape[1:])
-      result_dict.update({
-          'pi_o_final_states': pi_o_final_states,
-          'q_o_final_states': q_o_final_states,
-          'all_option_final_states': all_option_final_states
-      })
-      return result_dict
-
-  def get_single_option_init_states(self, batchsize):
-    pi_a_states = (torch.zeros([1, batchsize, self.hid_dim],
-                               device=Config.DEVICE),
-                   torch.zeros([1, batchsize, self.hid_dim],
-                               device=Config.DEVICE))
-    beta_states = (torch.zeros([1, batchsize, self.hid_dim],
-                               device=Config.DEVICE),
-                   torch.zeros([1, batchsize, self.hid_dim],
-                               device=Config.DEVICE))
-    option_states = (pi_a_states, beta_states)
-    return option_states
-
-  def get_manager_option_q_init_states(self, batchsize):
-    pi_o_states = (torch.zeros([1, batchsize, self.hid_dim],
-                               device=Config.DEVICE),
-                   torch.zeros([1, batchsize, self.hid_dim],
-                               device=Config.DEVICE))
-    q_o_states = (torch.zeros([1, batchsize, self.hid_dim],
-                              device=Config.DEVICE),
-                  torch.zeros([1, batchsize, self.hid_dim],
-                              device=Config.DEVICE))
-    return pi_o_states, q_o_states
-
-  def get_all_init_states(self, batchsize):
-    pi_o_hid_states, q_o_hid_states = self.get_manager_option_q_init_states(
-        batchsize)
-    all_option_states = [
-        self.get_single_option_init_states(batchsize)
-        for i in range(self.num_options)
-    ]
-    return pi_o_hid_states, q_o_hid_states, all_option_states
-
-  def assign_option_init_states(self, prev_options, prev_option_final_states,
-                                batchsize, masks):
-    all_option_final_states = [
-        self.get_single_option_init_states(batchsize)
-        for i in range(self.num_options)
-    ]
-    for worker_idx, option_idx in enumerate(prev_options):
-      pi_a_final_states, beta_final_states = all_option_final_states[option_idx]
-      prev_pi_a_final_states, prev_beta_final_states = prev_option_final_states[
-          option_idx]
-      # assign pi_a hid, cell states
-      pi_a_hid_state, pi_a_cell_state = pi_a_final_states
-      prev_pi_a_hid_state, prev_pi_a_cell_state = prev_pi_a_final_states
-      pi_a_hid_state[:,
-                     worker_idx, :] = prev_pi_a_hid_state[:,
-                                                          worker_idx, :] * masks[
-                                                              worker_idx]
-      pi_a_cell_state[:,
-                      worker_idx, :] = prev_pi_a_cell_state[:,
-                                                            worker_idx, :] * masks[
-                                                                worker_idx]
-      # assign beta hid, cell states
-      beta_hid_state, beta_cell_state = beta_final_states
-      prev_beta_hid_state, prev_beta_cell_state = prev_beta_final_states
-      beta_hid_state[:,
-                     worker_idx, :] = prev_beta_hid_state[:,
-                                                          worker_idx, :] * masks[
-                                                              worker_idx]
-      beta_cell_state[:,
-                      worker_idx, :] = prev_beta_cell_state[:,
-                                                            worker_idx, :] * masks[
-                                                                worker_idx]
-    return all_option_final_states
-
-  def get_masked_manager_lstm_states(self, hid_cell_states, masks):
-    masks = masks.view(1, masks.shape[0], 1)
-    return hid_cell_states[0] * masks, hid_cell_states[1] * masks
-
-
 class SoftOptionGaussianActorCriticNet(BaseNet):
 
   def __init__(self,
@@ -922,14 +690,18 @@ class OptionLstmGaussianActorCriticNet(BaseNet):
                state_dim,
                action_dim,
                hid_dim,
+               num_options,
                phi_body=None,
                actor_body=None,
                critic_body=None,
+               option_body_fn=None,
                config=None):
     super().__init__(config)
     self.is_recur = True
     self.config = config
     self.action_dim = action_dim
+    self.num_options = num_options
+
     self.hid_dim = hid_dim
     if config.bi_direction:
       # h,c: (num_layers * num_directions, batch, hidden_size)
@@ -956,22 +728,33 @@ class OptionLstmGaussianActorCriticNet(BaseNet):
             dropout=config.lstm_dropout,
             bidirectional=config.bi_direction), 1e-3)
 
-    self.fc_action = layer_init(
-        nn.Linear(self.actor_body.feature_dim, action_dim), 1e-3)
-    self.fc_critic = layer_init(
-        nn.Linear(self.critic_body.feature_dim, 1), 1e-3)
+    self.fc_pi_o = layer_init(
+        nn.Linear(config.lstm_to_fc_feat_dim, action_dim), 1e-3)
+    self.fc_q_o = layer_init(nn.Linear(config.lstm_to_fc_feat_dim, 1), 1e-3)
+
+    # build option network
+    self.options = nn.ModuleList([
+        SingleOptionLstmNet(action_dim, hid_dim, option_body_fn, config)
+        for _ in range(num_options)
+    ])
 
     # this is Config module, not self.config
     # device is selected select_device() in main
-    self.std = nn.Parameter(torch.zeros(action_dim))
     self.to(Config.DEVICE)
 
-  def forward(self, obs, input_lstm_states, masks, action_seq=None):
+  def forward(self,
+              obs,
+              masks,
+              prev_options,
+              input_manager_lstm_states=None,
+              input_options_lstm_states_list=None):
     '''
     Parameter:
       obs: [timesteps, batch, feat_dim]
       input_lstm_states: (h, c) h/c: [num_layers * num_directions, batch, hidden_size]
       masks: [timesteps, batch]
+      prev_options: [timesteps, batch]
+      input_option_lstm_states_list: [batch]: tuple(input_option_lstm_states)
 
     Returns:
       'input_lstm_states': [num_layers * num_directions, batch, hidden_size]
@@ -992,68 +775,85 @@ class OptionLstmGaussianActorCriticNet(BaseNet):
     # when multiplied with h and c
     masks = masks.unsqueeze(-1)
 
+    if not input_manager_lstm_states:
+      input_manager_lstm_states = self.get_init_lstm_states(batch_size)
+
     phi = self.phi_body(obs)
 
     # LSTM Loop
     h_list = []
-    h_input, c_input = input_lstm_states
+    h_input, c_input = input_manager_lstm_states
     for p, m in zip(phi, masks):
       h_input = h_input * m
       c_input = c_input * m
-      _, final_lstm_states = self.lstm(p.unsqueeze(0), (h_input, c_input))
-      h_input, c_input = final_lstm_states
+      _, final_manager_lstm_states = self.lstm(
+          p.unsqueeze(0),
+          (h_input, c_input))
+      h_input, c_input = final_manager_lstm_states
       # h,c: (num_layers * num_directions, batch, hidden_size)
       h_list.append(h_input)
 
     # output (fc) layers loop
-    a_list = []
-    log_prob_list = []
-    ent_list = []
-    mean_list = []
-    v_list = []
-    h_out_list = []
-    for t, h in enumerate(h_list):
+    pi_o_list = []
+    log_pi_o_list = []
+    q_o_list = []
+    for h in h_list:
       # flat h into [batch, feat_dim] shape (ffn's input)
       # h: (num_layers * num_directions, batch, hidden_size)->
       #    (batch, hidden_size * num_layers * num_directions)
       h = h.permute([1, 0, 2]).reshape([batch_size, -1])
-      h_out_list.append(h)
 
+      # policy over option with soft-max
       phi_a = self.actor_body(h)
-      mean = torch.tanh(self.fc_action(phi_a))
-      dist = torch.distributions.Normal(mean, F.softplus(self.std))
-      # if action is not none, during PPO training stage
-      # action [timesteps, action_dim]
-      if action_seq is None:
-        action = dist.sample()
-      else:
-        action = action_seq[t]
+      pi_o = F.softmax(phi_a, dim=-1)
+      log_pi_o = F.log_softmax(phi_a, dim=-1)
 
-      phi_v = self.critic_body(h)
-      v = self.fc_critic(phi_v)
-      log_prob = dist.log_prob(action).sum(-1).unsqueeze(-1)
-      entropy = dist.entropy().sum(-1).unsqueeze(-1)
+      # critic network
+      phi_c = self.critic_body(phi)
+      q_o = self.fc_q_o(phi_c)
 
-      a_list.append(action)
-      log_prob_list.append(log_prob)
-      ent_list.append(entropy)
-      mean_list.append(mean)
-      v_list.append(v)
+      pi_o_list.append(pi_o)
+      log_pi_o_list.append(log_pi_o)
+      q_o_list.append(q_o)
 
-    action, log_prob, h_out, entropy, mean, v = [
-        torch.cat(i) for i in
-        [a_list, log_prob_list, h_out_list, ent_list, mean_list, v_list]
+    pi_o, log_pi_o, q_o = [
+        torch.cat(i) for i in [pi_o_list, log_pi_o_list, q_o_list]
     ]
 
+    # option
+    mean = []
+    std = []
+    beta = []
+    h_lstm_states_list = []
+    final_option_lstm_states_list = []
+
+    # pause: how to deal with prev_options
+    # agent: how to deal with prev_options | h_states
+    aligned_input_options_lstm_states_list = self.get_aligned_input_options_lstm_states_list(
+        input_options_lstm_states_list, prev_options[0])
+    for o, option in enumerate(self.options):
+      aligned_masks = self.get_aligned_options_masks(masks, prev_options, o)
+      prediction = option(phi, aligned_masks,
+                          aligned_input_options_lstm_states_list[o])
+      mean.append(prediction['mean'].unsqueeze(1))
+      std.append(prediction['std'].unsqueeze(1))
+      beta.append(prediction['beta'])
+      h_lstm_states_list.append(prediction['h_lstm_states'])
+      final_option_lstm_states_list.append(prediction['final_lstm_states'])
+    mean = torch.cat(mean, dim=1)
+    std = torch.cat(std, dim=1)
+    beta = torch.cat(beta, dim=1)
+
     return {
-        'input_lstm_states': input_lstm_states,
-        'final_lstm_states': final_lstm_states,
-        'a': action,
-        'log_pi_a': log_prob,
-        'h_lstm_states': h_out,
-        'ent': entropy,
+        'pi_o': pi_o,
+        'log_pi_o': log_pi_o,
+        'q_o': q_o,
+        'final_manager_lstm_states': final_manager_lstm_states,
         'mean': mean,
-        'v': v
+        'std': std,
+        'beta': beta,
+        'h_lstm_states_list': h_lstm_states_list,
+        'final_option_lstm_states_list': final_option_lstm_states_list
     }
 
   def get_init_lstm_states(self, batchsize):
@@ -1063,6 +863,44 @@ class OptionLstmGaussianActorCriticNet(BaseNet):
                    torch.zeros(self.hid_size, device=Config.DEVICE))
     return init_states
 
+  def get_init_options_lstm_states_list(self, batchsize):
+    # h,c: (num_layers * num_directions, batch, hidden_size)
+    options_lstm_states_list = []
+    for i in range(self.num_options):
+      options_lstm_states_list.append(
+          self.options[i].get_init_lstm_states(batchsize))
+    return options_lstm_states_list
+
+  def get_aligned_input_options_lstm_states_list(
+      self, input_options_lstm_states_list, prev_options):
+    '''
+    input_option_lstm_states_list: list[num_options]; contains tuple of lstm states (h,c)
+    prev_options: [batchsize]; each entry is option id selected at t-1 time
+    '''
+    batch_size = prev_options.shape[0]
+    aligned_input_options_lstm_states_list = self.get_init_options_lstm_states_list(
+        batch_size)
+
+    for batch_id, option_id in enumerate(prev_options):
+      ih, ic = input_options_lstm_states_list[option_id]
+      ah, ac = aligned_input_options_lstm_states_list[option_id]
+      ah[:, batch_id, :] = ih[:, batch_id, :]
+      ac[:, batch_id, :] = ic[:, batch_id, :]
+
+    return aligned_input_options_lstm_states_list
+
+  def get_aligned_options_masks(self, masks, prev_options, option_id):
+    '''
+    masks: [timesteps, batch]
+    prev_options: [timesteps, batch]
+    '''
+    aligned_masks = masks.copy()
+    for m, o in zip(aligned_masks, prev_options):
+      o = o == option_id
+      m = m * o
+      import ipdb
+      ipdb.set_trace(context=7)
+    return aligned_masks
 
 
 class SingleOptionLstmNet(BaseNet):
@@ -1215,8 +1053,8 @@ class DeterministicOptionCriticNet(BaseNet):
     self.phi_params = list(self.phi_body.parameters())
 
     self.actor_opt = actor_opt_fn(self.actor_params + self.phi_params)
-    self.critic_opt = critic_opt_fn(self.critic_params + self.phi_params +
-                                    self.beta_params)
+    self.critic_opt = critic_opt_fn(
+        self.critic_params + self.phi_params + self.beta_params)
 
     # self.set_gpu(gpu)
 
