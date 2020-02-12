@@ -7,7 +7,7 @@ from sklearn.preprocessing import MinMaxScaler
 import random
 from random import shuffle
 
-MAX_STEPS = 20000
+MAX_STEPS = 10000
 
 INIT_CASH = 1000000
 MIN_TRADE_VOLUME = 100
@@ -16,11 +16,11 @@ stamp_tax = 0.001
 commission = 0.00015
 transfer_tax_sh = 0.00002
 
-wcsi_path = '/Users/spacegoing/Downloads/scp/scp/ppoc/csi300_20150130.csv'
+wcsi_path = '/home/chli4934/UsydCodeLab/reinf/DeepRL/deep_rl/component/CSIENV/csi300_20150130.csv'
 csi_dir = [
-    '/Users/spacegoing/Downloads/scp/scp/ppoc/a/',
-    '/Users/spacegoing/Downloads/scp/scp/ppoc/b/',
-    '/Users/spacegoing/Downloads/scp/scp/ppoc/c/',
+    '/project/chli/scp/CSI300/Stk_1F_2015/',
+    '/project/chli/scp/CSI300/Stk_1F_2016/',
+    '/project/chli/scp/CSI300/Stk_1F_2017/'
 ]
 stock_feat_dim = 6
 
@@ -132,7 +132,8 @@ class Csi300Env(gym.Env):
     after_total_asset_value *= (1 - 0.03 / 251)
 
     reward = after_total_asset_value / before_total_asset_value - 1
-    done = ((self.total_asset_value / INIT_CASH) <= 0.5) or self.done
+    done = ((self.total_asset_value / INIT_CASH) <=
+            0.5) or self.done or (self.current_step >= MAX_STEPS)
 
     # When used with Vectorized Env, env will be
     # automatically reset when done

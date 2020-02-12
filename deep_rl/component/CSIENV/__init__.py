@@ -1,1 +1,1 @@
-from .CSIENV import CSI300
+from .CSIENV import Csi300Env
