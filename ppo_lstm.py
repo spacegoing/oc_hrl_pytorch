@@ -5,6 +5,8 @@
 #######################################################################
 from deep_rl import *
 
+LeastSaveInterval = 50000
+
 
 def set_tasks(config):
   if config.game == 'dm-walker':
@@ -72,7 +74,6 @@ def ppo_continuous(**kwargs):
   config.mini_batch_size = 64
   config.ppo_ratio_clip = 0.2
   config.log_interval = 2048
-  config.max_steps = 1e6
   config.state_normalizer = MeanStdNormalizer()
   run_steps(PPOAgent(config))
 
@@ -135,11 +136,11 @@ def ppoc_continuous(**kwargs):
 def ppoc_lstm_continuous(**kwargs):
   config = Config()
   config.use_gae = False
-  config.rollout_length = 32
+  config.rollout_length = 256
   gstr = 'False'
   if config.use_gae:
     gstr = 'True'
-  kwargs['algo_tag'] = 'PPOC_LSTM_GAE_%s_%d' % (gstr, config.rollout_length)
+  kwargs['algo_tag'] = 'PPOC_AbE_LSTM_GAE_%s_%d' % (gstr, config.rollout_length)
   generate_tag(kwargs)
   kwargs.setdefault('log_level', 0)
   kwargs.setdefault('learning', 'all')
@@ -183,9 +184,11 @@ def ppoc_lstm_continuous(**kwargs):
   config.gradient_clip = 0.5
 
   config.discount = 0.99
-  config.max_steps = 1e9
   config.state_normalizer = MeanStdNormalizer()
   config.log_interval = 2048
+  config.save_interval = config.rollout_length * config.num_workers * 10
+  while config.save_interval <= LeastSaveInterval:
+    config.save_interval += config.save_interval
 
   # PPO params
   # training params
@@ -205,12 +208,12 @@ def ppoc_lstm_continuous(**kwargs):
 
 def ppo_lstm_continuous(**kwargs):
   config = Config()
-  config.use_gae = False
-  config.rollout_length = 32
+  config.use_gae = True
+  config.rollout_length = 32 * 2
   gstr = 'False'
   if config.use_gae:
     gstr = 'True'
-  kwargs['algo_tag'] = 'PPO_LSTM_GAE_%s_%d' % (gstr, config.rollout_length)
+  kwargs['algo_tag'] = 'PPO_AbE_LSTM_GAE_%s_%d' % (gstr, config.rollout_length)
   generate_tag(kwargs)
   kwargs.setdefault('log_level', 0)
   config.merge(kwargs)
@@ -243,9 +246,11 @@ def ppo_lstm_continuous(**kwargs):
   config.gradient_clip = 0.5
 
   config.discount = 0.99
-  config.max_steps = 1e9
   config.state_normalizer = MeanStdNormalizer()
   config.log_interval = 2048
+  config.save_interval = config.rollout_length * config.num_workers * 10
+  while config.save_interval <= LeastSaveInterval:
+    config.save_interval += config.save_interval
 
   # PPO params
   # training params
