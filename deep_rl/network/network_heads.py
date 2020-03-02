@@ -742,22 +742,32 @@ class OptionLstmGaussianActorCriticNet(BaseNet):
               input_manager_lstm_states=None,
               input_options_lstm_states_list=None):
     '''
+    num_workers here are batch_size
+
     Parameter:
-      obs: [timesteps, batch, feat_dim]
-      input_lstm_states: (h, c) h/c: [num_layers * num_directions, batch, hidden_size]
-      masks: [timesteps, batch]
-      prev_options: [timesteps, batch]
-      input_option_lstm_states_list: [num_options]: tuple(input_option_lstm_states)
+      obs: [timesteps, batch_size, feat_dim]
+      masks: [timesteps, batch_size]
+      prev_options: [timesteps, batch_size]
+      input_manager_lstm_states: List[2]: one for hidden state $h$,
+                                   one for cell state $c$
+            [num_layers * num_directions, batch_size, hid_dim]
+      input_options_lstm_states_list: List[num_options]:
+              List[2]: h/c: [num_layers * num_directions, batch_size, hid_dim]
 
     Returns:
-      'input_lstm_states': [num_layers * num_directions, batch, hidden_size]
-      'final_lstm_states': [num_layers * num_directions, batch, hidden_size]
-      'a': [timesteps * batchsize, action_dim]
-      'log_pi_a': [timesteps * batchsize, 1]
-      'h_lstm_states': [timesteps * batchsize, hid_dim * num_layers * num_directions]
-      'ent': [timesteps * batchsize, 1]
-      'mean': [timesteps * batchsize, action_dim]
-      'v': [timesteps * batchsize, 1]
+      'pi_o': [timesteps * batch_size, num_options],
+      'log_pi_o': [timesteps * batch_size, num_options],
+      'q_o': [timesteps * batch_size, num_options],
+      'final_manager_lstm_states': List[2]: one for hidden state $h$,
+                                   one for cell state $c$
+            [num_layers * num_directions, batch_size, hid_dim]
+      'mean': [timesteps * batch_size, num_options, act_dim],
+      'std': [timesteps * batch_size, num_options, act_dim],
+      'beta': [timesteps * batch_size, num_options]
+      'h_lstm_states_list': List[num_options]:
+             [timesteps * batch_size, hidden_size * num_layers * num_directions]
+      'final_options_lstm_states_list': List[num_options]:
+              List[2]: h/c: [num_layers * num_directions, batch_size, hid_dim]
     '''
     obs = tensor(obs)
     batch_size = masks.shape[1]
@@ -944,8 +954,8 @@ class SingleOptionLstmNet(BaseNet):
     '''
     Parameter:
       obs: [timesteps, batch, feat_dim]
-      input_lstm_states: (h, c) h/c: [num_layers * num_directions, batch, hidden_size]
       masks: [timesteps, batch]
+      input_lstm_states: (h, c) h/c: [num_layers * num_directions, batch, hidden_size]
 
     Returns:
       'mean': [timesteps * batchsize, action_dim]

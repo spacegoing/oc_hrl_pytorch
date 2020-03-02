@@ -132,6 +132,7 @@ class Csi300Env(gym.Env):
     after_total_asset_value *= (1 - 0.03 / 251)
 
     reward = after_total_asset_value / before_total_asset_value - 1
+    reward = after_total_asset_value - before_total_asset_value
     done = ((self.total_asset_value / INIT_CASH) <=
             0.5) or self.done or (self.current_step >= MAX_STEPS)
 
