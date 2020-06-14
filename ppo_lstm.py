@@ -274,7 +274,7 @@ if True:
   set_one_thread()
   random_seed()
   # select_device(-1)
-  select_device(1)
+  select_device(0)
   env_list = [
       'RoboschoolHopper-v1', 'RoboschoolWalker2d-v1',
       'RoboschoolHalfCheetah-v1', 'RoboschoolAnt-v1', 'RoboschoolHumanoid-v1'
@@ -300,9 +300,9 @@ if True:
   # ppo_continuous(game=game)
   # ddpg_continuous(game=game)
   # td3_continuous(game=game)
-  game = 'CSI300-v1'
-  ppo_lstm_continuous(game=game)
+  # game = 'CSI300-v1'
   ppoc_lstm_continuous(game=game)
+  ppo_lstm_continuous(game=game)
   ppoc_continuous(game=game)
 
   game = 'BreakoutNoFrameskip-v4'

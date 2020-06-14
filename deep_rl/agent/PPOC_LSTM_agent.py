@@ -33,23 +33,34 @@ class PPOCLSTMAgent(BaseAgent):
 
   def compute_pi_hat(self, prediction, prev_option, is_intial_states):
     # sample option
-
-    pi_o = prediction['pi_o']
-    mask = torch.zeros_like(pi_o)
+    pi_o = prediction['pi_o'] # [timesteps, num_options]
+    mask = torch.zeros_like(pi_o) # [timesteps, num_options]
     mask[self.worker_index, prev_option] = 1
-    beta = prediction['beta']
-    pi_hat = (1 - beta) * mask + beta * pi_o
+    beta = prediction['beta'] # [timesteps, num_options]
+    pi_hat = (1 - beta) * mask + beta * pi_o # [timesteps, num_options]
+    # [timesteps, num_options]
     is_intial_states = is_intial_states.view(-1, 1).expand(-1, pi_o.size(1))
-    pi_hat = torch.where(is_intial_states, pi_o, pi_hat)
+    pi_hat = torch.where(is_intial_states, pi_o, pi_hat) # [timesteps, num_options]
     return pi_hat
 
   def compute_log_pi_a(self, options, action, mean, std):
+    '''
+    options: [timesteps, 1]
+    action: [timesteps, act_dim]
+    mean: [timesteps, num_options, act_dim]
+    std: [timesteps, num_options, act_dim]
+    '''
     # calculate action
-
+    # [timesteps, 1] -> [timesteps, 1, act_dim]
     options = options.unsqueeze(-1).expand(-1, -1, mean.size(-1))
+    # [timesteps, num_options, act_dim] -> [timesteps, act_dim]
     mean = mean.gather(1, options).squeeze(1)
     std = std.gather(1, options).squeeze(1)
+    # dist: [timesteps, act_dim]
     dist = torch.distributions.Normal(mean, std)
+    # pi_a: [timesteps, 1]
+    # sum along act_dim dimension:
+    # p^{new}(A) = [p^{new}(A_1)p^{new}(A_2)...] = exp(sum(log along act_dim))
     pi_a = dist.log_prob(action).sum(-1).exp().unsqueeze(-1)
     return pi_a
 
@@ -131,7 +142,7 @@ class PPOCLSTMAgent(BaseAgent):
       pi_hat = self.compute_pi_hat(prediction, self.prev_options,
                                    self.is_initial_states)
       dist = torch.distributions.Categorical(probs=pi_hat)
-      options = dist.sample()
+      options = dist.sample() #[timesteps]
 
       self.logger.add_scalar(
           'beta',
@@ -147,10 +158,7 @@ class PPOCLSTMAgent(BaseAgent):
       std = prediction['std'][self.worker_index, options]
       dist = torch.distributions.Normal(mean, std)
       actions = dist.sample()
-
-      # todo: un exp in function
-      pi_a = self.compute_log_pi_a(
-          options.unsqueeze(-1), actions, prediction['mean'], prediction['std'])
+      pi_a = dist.log_prob(actions).sum(-1).exp().unsqueeze(-1)
 
       next_states, rewards, terminals, info = self.task.step(to_np(actions))
       masks = tensor(1 - terminals).unsqueeze(-1)
