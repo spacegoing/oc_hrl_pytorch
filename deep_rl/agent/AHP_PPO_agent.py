@@ -21,7 +21,7 @@ class AHPPPOAgent(BaseAgent):
         self.worker_index = tensor(np.arange(config.num_workers)).long()
         self.states = self.task.reset()
         self.states = config.state_normalizer(self.states)
-        self.is_initial_states = tensor(np.ones((config.num_workers))).byte()
+        self.is_initial_states = tensor(np.ones((config.num_workers))).to(torch.bool)
         self.prev_options = tensor(np.zeros(config.num_workers)).long()
 
         self.count = 0
@@ -115,7 +115,7 @@ class AHPPPOAgent(BaseAgent):
             prediction = self.network(states)
             beta = prediction['beta'][self.worker_index, self.prev_options]
             stop = self.sample_stop(beta)
-            stop = torch.where(self.is_initial_states, tensor(np.ones(stop.size())).byte(), stop)
+            stop = torch.where(self.is_initial_states, tensor(np.ones(stop.size())).to(torch.bool), stop)
 
             dist = torch.distributions.Categorical(probs=prediction['inter_pi'])
             options = dist.sample()
@@ -159,7 +159,7 @@ class AHPPPOAgent(BaseAgent):
                          'stop': stop.unsqueeze(-1),
                          'v': v})
 
-            self.is_initial_states = tensor(terminals).byte()
+            self.is_initial_states = tensor(terminals).to(torch.bool)
             self.prev_options = options
 
             states = next_states

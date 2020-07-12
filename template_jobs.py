@@ -6,6 +6,7 @@ def batch_mujoco():
     cf = Config()
     cf.add_argument('--i', type=int, default=0)
     cf.add_argument('--j', type=int, default=0)
+
     cf.merge()
 
     games = [
@@ -573,8 +574,11 @@ if __name__ == '__main__':
     mkdir('data')
     random_seed()
     set_one_thread()
-    select_device(-1)
+    select_device(1)
 
+    # game ='HalfCheetah-v2'
+    # r=0
+    # ahp_ppo_continuous(game=game, run=r, tasks=False, remark='AHP', gate=nn.Tanh())
     batch_mujoco()
     # batch_dm()
 
