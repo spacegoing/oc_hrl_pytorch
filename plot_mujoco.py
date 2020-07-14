@@ -174,16 +174,16 @@ def plot_mujoco(type='mean'):
   plotter = Plotter()
   games = [
       'HalfCheetah-v2',
-      'Walker2d-v2',
-      'Hopper-v2',
-      'Swimmer-v2',
+      # 'Walker2d-v2',
+      # 'Hopper-v2',
+      # 'Swimmer-v2',
   ]
 
   patterns = [
-      'ASC-PPO',
-      'AHP',
-      'remark_PPOC-',
-      'remark_PPO-',
+      'remark_ASC-PPO',
+      'remark_AHP',
+      'remark_PPOC',
+      'remark_PPO',
       'num_workers_4-remark_IOPG',
       'num_workers_4-remark_OC',
       'num_workers_4-remark_ASC-A2C',
@@ -207,7 +207,7 @@ def plot_mujoco(type='mean'):
       labels=labels,
       right_align=False,
       tag=plotter.RETURN_TRAIN,
-      root='./log/ASquaredC-mujoco',
+      root='./tmp_log/',
       interpolation=100,
       window=20,
       top_k=0,
@@ -221,7 +221,7 @@ def plot_mujoco(type='mean'):
 
 if __name__ == '__main__':
   mkdir('images')
-  plot_dm(type='mean')
-  # plot_mujoco(type='mean')
+  # plot_dm(type='mean')
+  plot_mujoco(type='mean')
   # plot_ablation(type='mean')
   # plot_option_occupancy()
