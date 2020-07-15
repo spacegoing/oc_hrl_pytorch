@@ -28,14 +28,31 @@ class OCAgent(BaseAgent):
     self.prev_options = self.is_initial_states.clone().long()
 
   def sample_option(self, prediction, epsilon, prev_option, is_intial_states):
-    with torch.no_grad():
-      q_option = prediction['q_o']
-      pi_option = torch.zeros_like(q_option).add(epsilon / q_option.size(1))
-      greedy_option = q_option.argmax(dim=-1, keepdim=True)
-      prob = 1 - epsilon + epsilon / q_option.size(1)
-      prob = torch.zeros_like(pi_option).add(prob)
-      pi_option.scatter_(1, greedy_option, prob)
+    '''
+    epsilon-greedy policy over option
+      epsilon = 0.1
+      single_option_eps = epsilon/num_options(4) = 0.025
+      > prob = 1 - (num_options - 1) * single_option_epsilon = 0.925
 
+      Then, assign prob to greedy option of each worker
+      > pi_option: 3*0.025 + 0.925 = 1
+      tensor([[0.0250, 0.9250, 0.0250, 0.0250],
+              [0.0250, 0.0250, 0.0250, 0.9250],
+              [0.0250, 0.0250, 0.9250, 0.0250]], device='cuda:0')
+    '''
+    with torch.no_grad():
+      # q_option/pi_option: [num_workers, num_options]
+      q_option = prediction['q_o']
+      num_workers, num_options = q_option.size()
+      single_option_epsilon = epsilon / num_options
+      pi_option = torch.zeros_like(q_option).add(single_option_epsilon)
+      # greedy_option: [num_workers, 1]
+      greedy_option = q_option.argmax(dim=-1)
+      prob = 1 - (num_options - 1) * single_option_epsilon
+      # pi_option: [num_workers, num_options]
+      pi_option[self.worker_index, greedy_option] = prob
+
+      # mask/beta: [num_workers, num_options]
       mask = torch.zeros_like(q_option)
       mask[self.worker_index, prev_option] = 1
       beta = prediction['beta']
@@ -43,9 +60,10 @@ class OCAgent(BaseAgent):
 
       dist = torch.distributions.Categorical(probs=pi_option)
       options = dist.sample()
-      dist = torch.distributions.Categorical(probs=pi_hat_option)
+      dist = torch.distributions.Categorical(logits=pi_hat_option)
       options_hat = dist.sample()
 
+      # If episode ends and restarted, no beta, use original pi_option
       options = torch.where(is_intial_states, options, options_hat)
     return options
 
@@ -57,16 +75,25 @@ class OCAgent(BaseAgent):
     for _ in range(config.rollout_length):
       prediction = self.network(self.states)
       epsilon = config.random_option_prob(config.num_workers)
+      # options: [num_workers] values: [0,num_workers-1]
       options = self.sample_option(prediction, epsilon, self.prev_options,
                                    self.is_initial_states)
 
+      # mean/std: [num_workers, action_dim]
       mean = prediction['mean'][self.worker_index, options]
       std = prediction['std'][self.worker_index, options]
       dist = torch.distributions.Normal(mean, std)
+      # actions: [num_workers, action_dim]
       actions = dist.sample()
+      # log_pi/entropy: [num_workers, 1]
+      # dist.log_prob(actions)[num_workers, action_dim]
+      # .sum(-1)[num_workers].unsqueeze(-1)[num_workers, 1]
       log_pi = dist.log_prob(actions).sum(-1).unsqueeze(-1)
       entropy = dist.entropy().sum(-1).unsqueeze(-1)
 
+      # next_states: [num_workers, state_dim]
+      # rewards/terminals: [num_workers] float/bool
+      # info: (halfcheetah)['reward_run', 'reward_ctrl', 'episodic_return']
       next_states, rewards, terminals, info = self.task.step(to_np(actions))
       self.record_online_return(info)
       next_states = config.state_normalizer(next_states)

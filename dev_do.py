@@ -116,7 +116,7 @@ remark = 'DO_PPOC'
 num_workers = 1
 # OC
 remark = 'DO_OC'
-num_workers = 4
+num_workers = 3
 kwargs = dict(
     game=game,
     run=run,

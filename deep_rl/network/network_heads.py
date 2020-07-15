@@ -352,6 +352,19 @@ class OptionGaussianActorCriticNet(nn.Module, BaseNet):
     self.to(Config.DEVICE)
 
   def forward(self, obs):
+    '''
+    Params:
+        obs: [num_workers, state_dim]
+
+    Returns:
+        inter_pi: [num_workers, num_options]
+        log_inter_pi: [num_workers, num_options]
+        beta: [num_workers, num_options]
+        mean: [num_workers, num_options, action_dim]
+        std: [num_workers, num_options, action_dim]
+        q_o: [num_workers, num_options]
+        u_o: [num_workers, num_options+1]
+    '''
     obs = tensor(obs)
     phi = self.phi_body(obs)
 
