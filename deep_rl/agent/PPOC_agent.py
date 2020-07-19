@@ -65,27 +65,27 @@ class PPOCAgent(BaseAgent):
     adv = storage.adv
     all_ret = storage.ret
 
-    ret = v[-1].detach()
-    advantages = tensor(np.zeros((config.num_workers, 1)))
-    for i in reversed(range(config.rollout_length)):
-      ret = storage.r[i] + config.discount * storage.m[i] * ret
-      if not config.use_gae:
-        advantages = ret - v[i].detach()
-      else:
-        td_error = storage.r[i] + config.discount * storage.m[i] * v[i +
-                                                                     1] - v[i]
-        advantages = advantages * config.gae_tau * config.discount * storage.m[
-            i] + td_error
-      adv[i] = advantages.detach()
-      all_ret[i] = ret.detach()
+    with torch.no_grad():
+      ret = v[-1]
+      advantages = tensor(np.zeros((config.num_workers, 1)))
+      import ipdb; ipdb.set_trace(context=7)
+      for i in reversed(range(config.rollout_length)):
+        ret = storage.r[i] + config.discount * storage.m[i] * ret
+        if not config.use_gae:
+          advantages = ret - v[i]
+        else:
+          td_error = storage.r[i] + config.discount * storage.m[i] * v[i +
+                                                                      1] - v[i]
+          advantages = advantages * config.gae_tau * config.discount * storage.m[
+              i] + td_error
+        adv[i] = advantages
+        all_ret[i] = ret
 
   def learn(self, storage):
     config = self.config
 
     states, actions, log_pi_bar_old, options, returns, advantages, inits, prev_options = storage.cat(
         ['s', 'a', 'log_pi_bar', 'o', 'ret', 'adv', 'init', 'prev_o'])
-    actions = actions.detach()
-    log_pi_bar_old = log_pi_bar_old.detach()
     advantages = (advantages - advantages.mean()) / advantages.std()
 
     for _ in range(config.optimization_epochs):
@@ -133,7 +133,7 @@ class PPOCAgent(BaseAgent):
         beta_loss = beta_loss.mean()
 
         q_loss = (prediction['q_o'].gather(1, sampled_options) -
-                  sampled_returns.detach()).pow(2).mul(0.5).mean()
+                  sampled_returns).pow(2).mul(0.5).mean()
 
         ent = -(prediction['log_inter_pi'] *
                 prediction['inter_pi']).sum(-1).mean()
