@@ -146,90 +146,93 @@ class PPOCAgent(BaseAgent):
                                  config.gradient_clip)
         self.opt.step()
 
+  def rollout(self, storage, config, states):
+    with torch.no_grad():
+      for _ in range(config.rollout_length):
+        prediction = self.network(states)
+        # pi_hat: [num_workers, num_options]
+        # probability matrix for all options
+        pi_hat = self.compute_pi_hat(prediction, self.prev_options,
+                                     self.is_initial_states)
+        dist = torch.distributions.Categorical(probs=pi_hat)
+        # options: [num_workers]
+        options = dist.sample()
+
+        self.logger.add_scalar(
+            'beta',
+            prediction['beta'][self.worker_index, self.prev_options],
+            log_level=5)
+        self.logger.add_scalar('option', options[0], log_level=5)
+        self.logger.add_scalar('pi_hat_ent', dist.entropy(), log_level=5)
+        self.logger.add_scalar(
+            'pi_hat_o', dist.log_prob(options).exp(), log_level=5)
+
+        # mean/std: [num_workers, action_dim]
+        mean = prediction['mean'][self.worker_index, options]
+        std = prediction['std'][self.worker_index, options]
+        dist = torch.distributions.Normal(mean, std)
+        # actions: [num_workers, action_dim]
+        actions = dist.sample()
+        pi_bar = dist.log_prob(actions).sum(-1).exp().unsqueeze(-1)
+
+        # next_states: tuple([state_dim] * num_workers)
+        # terminals(bool)/rewards: [num_workers]
+        # info: dict(['reward_run', 'reward_ctrl', 'episodic_return'] * 3)
+        next_states, rewards, terminals, info = self.task.step(to_np(actions))
+        self.record_online_return(info)
+        rewards = config.reward_normalizer(rewards)
+        # next_states: -> [num_workers, state_dim]
+        next_states = config.state_normalizer(next_states)
+        storage.add(prediction)
+        '''
+          r: [num_workers, 1]
+          m: [num_workers, 1]
+            0 for terminated states; 1 for continue
+          a: [num_workers, act_dim]
+          o: [num_workers, 1]
+          prev_o: [num_workers, 1]
+          s: [num_workers, state_dim]
+          init: [num_workers, 1]
+          v: [num_workers, 1]
+          log_pi_bar: [num_workers, 1]
+        '''
+        storage.add({
+            'r': tensor(rewards).unsqueeze(-1),
+            'm': tensor(1 - terminals).unsqueeze(-1),
+            'a': actions,
+            'o': options.unsqueeze(-1),
+            'prev_o': self.prev_options.unsqueeze(-1),
+            's': tensor(states),
+            'init': self.is_initial_states.unsqueeze(-1),
+            'v': prediction['q_o'][self.worker_index, options].unsqueeze(-1),
+            'log_pi_bar': pi_bar.add(1e-5).log(),
+        })
+
+        # self.is_initial_states: [num_workers, 1]
+        #    0 for continue; 1 for terminated
+        self.is_initial_states = tensor(terminals).byte()
+        self.prev_options = options
+
+        states = next_states
+        self.total_steps += config.num_workers
+
+      self.states = states
+      prediction = self.network(states)
+      pi_hat = self.compute_pi_hat(prediction, self.prev_options,
+                                   self.is_initial_states)
+      dist = torch.distributions.Categorical(pi_hat)
+      options = dist.sample()
+
+      storage.add(prediction)
+      # v: [num_workers, 1]
+      storage.add(
+          {'v': prediction['q_o'][self.worker_index, options].unsqueeze(-1)})
+      storage.placeholder()
+
   def step(self):
     config = self.config
     storage = Storage(config.rollout_length)
     states = self.states
-    for _ in range(config.rollout_length):
-      prediction = self.network(states)
-      # pi_hat: [num_workers, num_options]
-      # probability matrix for all options
-      pi_hat = self.compute_pi_hat(prediction, self.prev_options,
-                                   self.is_initial_states)
-      dist = torch.distributions.Categorical(probs=pi_hat)
-      # options: [num_workers]
-      options = dist.sample()
-
-      self.logger.add_scalar(
-          'beta',
-          prediction['beta'][self.worker_index, self.prev_options],
-          log_level=5)
-      self.logger.add_scalar('option', options[0], log_level=5)
-      self.logger.add_scalar('pi_hat_ent', dist.entropy(), log_level=5)
-      self.logger.add_scalar(
-          'pi_hat_o', dist.log_prob(options).exp(), log_level=5)
-
-      # mean/std: [num_workers, action_dim]
-      mean = prediction['mean'][self.worker_index, options]
-      std = prediction['std'][self.worker_index, options]
-      dist = torch.distributions.Normal(mean, std)
-      # actions: [num_workers, action_dim]
-      actions = dist.sample()
-      pi_bar = dist.log_prob(actions).sum(-1).exp().unsqueeze(-1)
-
-      # next_states: tuple([state_dim] * num_workers)
-      # terminals(bool)/rewards: [num_workers]
-      # info: dict(['reward_run', 'reward_ctrl', 'episodic_return'] * 3)
-      next_states, rewards, terminals, info = self.task.step(to_np(actions))
-      self.record_online_return(info)
-      rewards = config.reward_normalizer(rewards)
-      # next_states: -> [num_workers, state_dim]
-      next_states = config.state_normalizer(next_states)
-      storage.add(prediction)
-
-      '''
-        r: [num_workers, 1]
-        m: [num_workers, 1]
-           0 for terminated states; 1 for continue
-        a: [num_workers, act_dim]
-        o: [num_workers, 1]
-        prev_o: [num_workers, 1]
-        s: [num_workers, state_dim]
-        init: [num_workers, 1]
-        v: [num_workers, 1]
-        log_pi_bar: [num_workers, 1]
-      '''
-      storage.add({
-          'r': tensor(rewards).unsqueeze(-1),
-          'm': tensor(1 - terminals).unsqueeze(-1),
-          'a': actions,
-          'o': options.unsqueeze(-1),
-          'prev_o': self.prev_options.unsqueeze(-1),
-          's': tensor(states),
-          'init': self.is_initial_states.unsqueeze(-1),
-          'v': prediction['q_o'][self.worker_index, options].unsqueeze(-1),
-          'log_pi_bar': pi_bar.add(1e-5).log(),
-      })
-
-      # self.is_initial_states: [num_workers, 1]
-      #    0 for continue; 1 for terminated
-      self.is_initial_states = tensor(terminals).byte()
-      self.prev_options = options
-
-      states = next_states
-      self.total_steps += config.num_workers
-
-    self.states = states
-    prediction = self.network(states)
-    pi_hat = self.compute_pi_hat(prediction, self.prev_options,
-                                 self.is_initial_states)
-    dist = torch.distributions.Categorical(pi_hat)
-    options = dist.sample()
-
-    storage.add(prediction)
-    storage.add(
-        {'v': prediction['q_o'][self.worker_index, options].unsqueeze(-1)})
-    storage.placeholder()
-
+    self.rollout(storage, config, states)
     self.compute_adv(storage)
     self.learn(storage)
