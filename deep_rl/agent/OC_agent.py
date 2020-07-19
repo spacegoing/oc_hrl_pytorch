@@ -122,26 +122,51 @@ class OCAgent(BaseAgent):
     with torch.no_grad():
       prediction = self.target_network(self.states)
       storage.placeholder()
+      # betas: [num_workers]
       betas = prediction['beta'][self.worker_index, self.prev_options]
+      # ret: [num_workers]
+      # prediction['q_o'][self.worker_index, self.prev_options]: [num_workers]
+      # torch.max(prediction['q_o'], dim=-1).values: [num_workers]
       ret = (1 - betas) * prediction['q_o'][self.worker_index, self.prev_options] + \
-            betas * torch.max(prediction['q_o'], dim=-1)[0]
+            betas * torch.max(prediction['q_o'], dim=-1).values
+      # ret: [num_workers, 1]
       ret = ret.unsqueeze(-1)
 
     for i in reversed(range(config.rollout_length)):
       ret = storage.r[i] + config.discount * storage.m[i] * ret
+      # storage.q_o[i].gather(1, storage.o[i]): [num_workers, 1]
+      # storage.o[i]: [num_workers, 1], O_t
       adv = ret - storage.q_o[i].gather(1, storage.o[i])
       storage.ret[i] = ret
       storage.adv[i] = adv
 
+      # v: [num_workers, 1]
+      # storage.q_o[i].max(dim=-1, keepdim=True).values: [num_workers, 1]
+      # storage.q_o[i].mean(-1).unsqueeze(-1): [num_workers, 1]
       v = storage.q_o[i].max(
-          dim=-1, keepdim=True)[0] * (1 - storage.eps[i]) + storage.q_o[i].mean(
-              -1).unsqueeze(-1) * storage.eps[i]
+            dim=-1, keepdim=True).values * (1 - storage.eps[i]) +\
+          storage.q_o[i].mean(-1).unsqueeze(-1) * storage.eps[i]
+      # q: [num_workers, 1]
       q = storage.q_o[i].gather(1, storage.prev_o[i])
+      # beta_adv: [num_workers, 1]
       storage.beta_adv[i] = q - v + config.beta_reg
 
     q, beta, log_pi, ret, adv, beta_adv, ent, option, action, initial_states, prev_o = \
         storage.cat(['q_o', 'beta', 'log_pi', 'ret', 'adv', 'beta_adv', 'ent', 'o', 'a', 'init', 'prev_o'])
 
+    '''
+      q: [num_workers*rollout, num_options]
+      beta: [num_workers*rollout, num_options]
+      log_pi: [num_workers*rollout, 1]
+      ret: [num_workers*rollout, 1]
+      adv: [num_workers*rollout, 1]
+      beta_adv: [num_workers*rollout, 1]
+      ent: [num_workers*rollout, 1]
+      option: [num_workers*rollout, 1]
+      action: [num_workers*rollout, act_dim, 1]
+      initial_states: [num_workers*rollout, 1]
+      prev_o: [num_workers*rollout, 1]
+    '''
     q_loss = (q.gather(1, option) - ret.detach()).pow(2).mul(0.5).mean()
     pi_loss = -(log_pi * adv.detach()) - config.entropy_weight * ent
     pi_loss = pi_loss.mean()
