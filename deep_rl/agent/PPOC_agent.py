@@ -31,31 +31,32 @@ class PPOCAgent(BaseAgent):
     self.all_options = []
 
   def compute_pi_hat(self, prediction, prev_option, is_intial_states):
+    # inter_pi/mask: [num_workers, num_options]
     inter_pi = prediction['inter_pi']
     mask = torch.zeros_like(inter_pi)
+    # prev_option: [num_workers]
     mask[self.worker_index, prev_option] = 1
+    # beta: [num_workers, num_options]
     beta = prediction['beta']
+    # P(O_t|O_{t-1}, S_t) = \sum_{\beta} P(O_t, b_t| O_{t-1}, S_t)
     pi_hat = (1 - beta) * mask + beta * inter_pi
+    # is_intial_states: [num_workers] ->
+    # replicated to [num_workers, num_options]
     is_intial_states = is_intial_states.view(-1, 1).expand(-1, inter_pi.size(1))
+    # pi_hat: [num_workers, num_options]; probability matrix for all options
     pi_hat = torch.where(is_intial_states, inter_pi, pi_hat)
     return pi_hat
 
   def compute_pi_bar(self, options, action, mean, std):
+    # options: [num_workers, 1] -> [num_workers, 1, act_dim]
     options = options.unsqueeze(-1).expand(-1, -1, mean.size(-1))
+    # mean: [num_workers, num_options, act_dim] -> [num_workers, act_dim]
     mean = mean.gather(1, options).squeeze(1)
+    # mean: [num_workers, num_options, act_dim] -> [num_workers, act_dim]
     std = std.gather(1, options).squeeze(1)
     dist = torch.distributions.Normal(mean, std)
     pi_bar = dist.log_prob(action).sum(-1).exp().unsqueeze(-1)
     return pi_bar
-
-  def compute_log_pi_a(self, options, pi_hat, action, mean, std, mdp):
-    if mdp == 'hat':
-      return pi_hat.add(1e-5).log().gather(1, options)
-    elif mdp == 'bar':
-      pi_bar = self.compute_pi_bar(options, action, mean, std)
-      return pi_bar.add(1e-5).log()
-    else:
-      raise NotImplementedError
 
   def compute_adv(self, storage):
     config = self.config
@@ -90,6 +91,19 @@ class PPOCAgent(BaseAgent):
     for _ in range(config.optimization_epochs):
       sampler = random_sample(np.arange(states.size(0)), config.mini_batch_size)
       for batch_indices in sampler:
+        '''
+        batch_size=mini_batch_size
+
+        batch_indices: [batch_size]
+        sampled_states: [batch_size, state_dim]
+        sampled_actions: [batch_size, act_dim]
+        sampled_options: [batch_size, 1]
+        sampled_log_pi_bar_old: [batch_size, 1]
+        sampled_returns: [batch_size, 1]
+        sampled_advantages: [batch_size, 1]
+        sampled_inits: [batch_size, 1]
+        sampled_prev_options: [batch_size, 1]
+        '''
         batch_indices = tensor(batch_indices).long()
         sampled_states = states[batch_indices]
         sampled_actions = actions[batch_indices]
@@ -138,9 +152,12 @@ class PPOCAgent(BaseAgent):
     states = self.states
     for _ in range(config.rollout_length):
       prediction = self.network(states)
+      # pi_hat: [num_workers, num_options]
+      # probability matrix for all options
       pi_hat = self.compute_pi_hat(prediction, self.prev_options,
                                    self.is_initial_states)
       dist = torch.distributions.Categorical(probs=pi_hat)
+      # options: [num_workers]
       options = dist.sample()
 
       self.logger.add_scalar(
@@ -152,20 +169,36 @@ class PPOCAgent(BaseAgent):
       self.logger.add_scalar(
           'pi_hat_o', dist.log_prob(options).exp(), log_level=5)
 
+      # mean/std: [num_workers, action_dim]
       mean = prediction['mean'][self.worker_index, options]
       std = prediction['std'][self.worker_index, options]
       dist = torch.distributions.Normal(mean, std)
+      # actions: [num_workers, action_dim]
       actions = dist.sample()
+      pi_bar = dist.log_prob(actions).sum(-1).exp().unsqueeze(-1)
 
-      pi_bar = self.compute_pi_bar(
-          options.unsqueeze(-1), actions, prediction['mean'], prediction['std'])
-
+      # next_states: tuple([state_dim] * num_workers)
+      # terminals(bool)/rewards: [num_workers]
+      # info: dict(['reward_run', 'reward_ctrl', 'episodic_return'] * 3)
       next_states, rewards, terminals, info = self.task.step(to_np(actions))
       self.record_online_return(info)
       rewards = config.reward_normalizer(rewards)
+      # next_states: -> [num_workers, state_dim]
       next_states = config.state_normalizer(next_states)
       storage.add(prediction)
 
+      '''
+        r: [num_workers, 1]
+        m: [num_workers, 1]
+           0 for terminated states; 1 for continue
+        a: [num_workers, act_dim]
+        o: [num_workers, 1]
+        prev_o: [num_workers, 1]
+        s: [num_workers, state_dim]
+        init: [num_workers, 1]
+        v: [num_workers, 1]
+        log_pi_bar: [num_workers, 1]
+      '''
       storage.add({
           'r': tensor(rewards).unsqueeze(-1),
           'm': tensor(1 - terminals).unsqueeze(-1),
@@ -178,6 +211,8 @@ class PPOCAgent(BaseAgent):
           'log_pi_bar': pi_bar.add(1e-5).log(),
       })
 
+      # self.is_initial_states: [num_workers, 1]
+      #    0 for continue; 1 for terminated
       self.is_initial_states = tensor(terminals).byte()
       self.prev_options = options
 

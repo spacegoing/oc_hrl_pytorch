@@ -73,7 +73,7 @@ def ppoc_continuous(**kwargs):
   else:
     hidden_units = (64, 64)
 
-  config.task_fn = lambda: Task(config.game)
+  config.task_fn = lambda: Task(config.game, num_envs=config.num_workers)
   config.eval_env = Task(config.game)
 
   config.network_fn = lambda: OptionGaussianActorCriticNet(
@@ -110,13 +110,12 @@ select_device(0)
 game = 'HalfCheetah-v2'
 run = 40
 tasks = False
+num_workers = 3
 gate = nn.Tanh()
-# PPOC
-remark = 'DO_PPOC'
-num_workers = 1
 # OC
 remark = 'DO_OC'
-num_workers = 3
+# PPOC
+remark = 'DO_PPOC'
 kwargs = dict(
     game=game,
     run=run,
@@ -124,5 +123,5 @@ kwargs = dict(
     remark=remark,
     gate=gate,
     num_workers=num_workers)
-oc_continuous(**kwargs)
 ppoc_continuous(**kwargs)
+oc_continuous(**kwargs)
