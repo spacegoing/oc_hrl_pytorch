@@ -121,6 +121,9 @@ class OCAgent(BaseAgent):
 
     with torch.no_grad():
       prediction = self.target_network(self.states)
+      epsilon = config.random_option_prob(config.num_workers)
+      storage.add(prediction)
+      storage.add({'eps': epsilon})
       storage.placeholder()
       # betas: [num_workers]
       betas = prediction['beta'][self.worker_index, self.prev_options]
@@ -143,11 +146,11 @@ class OCAgent(BaseAgent):
       # v: [num_workers, 1]
       # storage.q_o[i].max(dim=-1, keepdim=True).values: [num_workers, 1]
       # storage.q_o[i].mean(-1).unsqueeze(-1): [num_workers, 1]
-      v = storage.q_o[i].max(
-            dim=-1, keepdim=True).values * (1 - storage.eps[i]) +\
-          storage.q_o[i].mean(-1).unsqueeze(-1) * storage.eps[i]
+      v = storage.q_o[i+1].max(
+            dim=-1, keepdim=True).values * (1 - storage.eps[i+1]) +\
+          storage.q_o[i+1].mean(-1).unsqueeze(-1) * storage.eps[i+1]
       # q: [num_workers, 1]
-      q = storage.q_o[i].gather(1, storage.prev_o[i])
+      q = storage.q_o[i + 1].gather(1, storage.o[i])
       # beta_adv: [num_workers, 1]
       storage.beta_adv[i] = q - v + config.beta_reg
 

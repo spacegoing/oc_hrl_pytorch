@@ -68,7 +68,6 @@ class PPOCAgent(BaseAgent):
     with torch.no_grad():
       ret = v[-1]
       advantages = tensor(np.zeros((config.num_workers, 1)))
-      import ipdb; ipdb.set_trace(context=7)
       for i in reversed(range(config.rollout_length)):
         ret = storage.r[i] + config.discount * storage.m[i] * ret
         if not config.use_gae:
