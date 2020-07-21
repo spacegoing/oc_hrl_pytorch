@@ -66,17 +66,19 @@ class PPOCAgent(BaseAgent):
     all_ret = storage.ret
 
     with torch.no_grad():
+      # ret: [num_workers, 1]
       ret = v[-1]
+      # advantages: [num_workers, 1]
       advantages = tensor(np.zeros((config.num_workers, 1)))
       for i in reversed(range(config.rollout_length)):
+        # m: [num_workers, 1]
         ret = storage.r[i] + config.discount * storage.m[i] * ret
         if not config.use_gae:
           advantages = ret - v[i]
         else:
-          td_error = storage.r[i] + config.discount * storage.m[i] * v[i +
-                                                                      1] - v[i]
-          advantages = advantages * config.gae_tau * config.discount * storage.m[
-              i] + td_error
+          # td_error: [num_workers, 1]
+          td_error = storage.r[i] + config.discount * storage.m[i] * v[i+1] - v[i]
+          advantages = advantages * config.gae_tau * config.discount * storage.m[i] + td_error
         adv[i] = advantages
         all_ret[i] = ret
 
