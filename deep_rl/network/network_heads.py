@@ -8,7 +8,7 @@ from .network_utils import *
 from .network_bodies import *
 
 
-class VanillaNet(nn.Module, BaseNet):
+class VanillaNet(BaseNet):
 
   def __init__(self, output_dim, body):
     super(VanillaNet, self).__init__()
@@ -22,7 +22,7 @@ class VanillaNet(nn.Module, BaseNet):
     return y
 
 
-class DuelingNet(nn.Module, BaseNet):
+class DuelingNet(BaseNet):
 
   def __init__(self, action_dim, body):
     super(DuelingNet, self).__init__()
@@ -40,7 +40,7 @@ class DuelingNet(nn.Module, BaseNet):
     return q
 
 
-class CategoricalNet(nn.Module, BaseNet):
+class CategoricalNet(BaseNet):
 
   def __init__(self, action_dim, num_atoms, body):
     super(CategoricalNet, self).__init__()
@@ -60,7 +60,7 @@ class CategoricalNet(nn.Module, BaseNet):
     return prob, log_prob
 
 
-class QuantileNet(nn.Module, BaseNet):
+class QuantileNet(BaseNet):
 
   def __init__(self, action_dim, num_quantiles, body):
     super(QuantileNet, self).__init__()
@@ -78,7 +78,7 @@ class QuantileNet(nn.Module, BaseNet):
     return quantiles
 
 
-class OptionCriticNet(nn.Module, BaseNet):
+class OptionCriticNet(BaseNet):
 
   def __init__(self, body, action_dim, num_options):
     super(OptionCriticNet, self).__init__()
@@ -102,7 +102,7 @@ class OptionCriticNet(nn.Module, BaseNet):
     return {'q': q, 'beta': beta, 'log_pi': log_pi, 'pi': pi}
 
 
-class DeterministicActorCriticNet(nn.Module, BaseNet):
+class DeterministicActorCriticNet(BaseNet):
 
   def __init__(self,
                state_dim,
@@ -152,7 +152,7 @@ class DeterministicActorCriticNet(nn.Module, BaseNet):
     return self.fc_critic(self.critic_body(phi, a))
 
 
-class GaussianActorCriticNet(nn.Module, BaseNet):
+class GaussianActorCriticNet(BaseNet):
 
   def __init__(self,
                state_dim,
@@ -204,7 +204,7 @@ class GaussianActorCriticNet(nn.Module, BaseNet):
     }
 
 
-class CategoricalActorCriticNet(nn.Module, BaseNet):
+class CategoricalActorCriticNet(BaseNet):
 
   def __init__(self,
                state_dim,
@@ -249,7 +249,7 @@ class CategoricalActorCriticNet(nn.Module, BaseNet):
     return {'a': action, 'log_pi_a': log_prob, 'ent': entropy, 'v': v}
 
 
-class InterOptionPGNet(nn.Module, BaseNet):
+class InterOptionPGNet(BaseNet):
 
   def __init__(self, body, action_dim, num_options):
     super(InterOptionPGNet, self).__init__()
@@ -340,7 +340,7 @@ class DoeOptionNet(nn.Module):
     }
 
 
-class OptionGaussianActorCriticNet(nn.Module, BaseNet):
+class OptionGaussianActorCriticNet(BaseNet):
 
   def __init__(self,
                state_dim,
@@ -426,7 +426,7 @@ class OptionGaussianActorCriticNet(nn.Module, BaseNet):
     }
 
 
-class DoeNet(nn.Module, BaseNet):
+class DoeNet(BaseNet):
 
   def __init__(self,
                state_dim,

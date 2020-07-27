@@ -11,10 +11,10 @@ import numpy as np
 from ..utils import *
 
 
-class BaseNet:
+class BaseNet(nn.Module):
 
   def __init__(self):
-    pass
+    super().__init__()
 
 
 def layer_init(layer, w_scale=1.0):
