@@ -85,6 +85,8 @@ class TransformerModel(nn.Module):
     src_mask, tgt_mask, memory_mask = self.get_all_masks(
         src_seq_len, tgt_seq_len, device)
 
+    import ipdb; ipdb.set_trace(context=7)
+    es = self.embed_src(src)
     src = self.embed_src(src) * math.sqrt(self.ninp)
     src = self.pos_encoder(src)
     memory = self.transformer_encoder(src, src_mask)

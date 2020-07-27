@@ -458,25 +458,29 @@ class DoeNet(BaseNet):
     ## transformer
     # linear transformation
     nhead = 4
-    dmodel = 40 # divisible by num_heads
+    dmodel = 40  # divisible by num_heads
     nlayers = 3
     nhid = 50
     dropout = 0.2
-    # norm state, option concatenation
-    self.so_norm = nn.LayerNorm(dmodel)
-    # todo: should use option embed vector / embed_option embedding?
-    # map state, option concatenation -> dmodel
-    self.lc_states_prev_option = layer_init(
-        nn.Linear(critic_body.feature_dim + dmodel, dmodel))
+    ## encoder
     # option embedding
     self.embed_option = nn.Embedding(num_options, dmodel)
+    ## decoder
+    # norm state, option concatenation
+    self.de_concat_norm = nn.LayerNorm(critic_body.feature_dim + dmodel)
+    # todo: should use option embed vector / embed_option embedding?
+    # map state, option concatenation -> dmodel
+    self.de_so_lc = layer_init(
+        nn.Linear(critic_body.feature_dim + dmodel, dmodel))
+    self.de_logtis_lc = layer_init(nn.Linear(dmodel, num_options))
+
     self.doe = nn.Transformer(dmodel, nhead, nlayers, nlayers, nhid, dropout)
 
     self.num_options = num_options
     self.action_dim = action_dim
     self.to(Config.DEVICE)
 
-  def forward(self, obs):
+  def forward(self, obs, prev_options):
     '''
     Params:
         obs: [num_workers, state_dim]
@@ -493,6 +497,23 @@ class DoeNet(BaseNet):
     obs = tensor(obs)
     phi = self.phi_body(obs)
 
+    phi_c = self.critic_body(phi)
+    q_o = self.fc_q_o(phi_c)
+
+    num_workers = obs.shape[0]
+    xx = nn.Embedding(4, 10)
+    mm = xx(torch.LongTensor([[0,1,2]]))
+    embed_all_idx =tensor(
+        np.repeat(
+            np.arange(self.num_options, dtype=int)[:, np.newaxis],
+            num_workers,
+            axis=1)).type(torch.long).contiguous()
+    embed_all_idx = range_tensor(self.num_options).repeat(num_workers, 1).t()
+    mt = self.embed_option(embed_all_idx)
+
+    import ipdb
+    ipdb.set_trace(context=7)
+
     mean = []
     std = []
     beta = []
@@ -504,14 +525,6 @@ class DoeNet(BaseNet):
     mean = torch.cat(mean, dim=1)
     std = torch.cat(std, dim=1)
     beta = torch.cat(beta, dim=1)
-
-    phi_a = self.actor_body(phi)
-    phi_a = self.fc_pi_o(phi_a)
-    pi_o = F.softmax(phi_a, dim=-1)
-    log_pi_o = F.log_softmax(phi_a, dim=-1)
-
-    phi_c = self.critic_body(phi)
-    q_o = self.fc_q_o(phi_c)
 
     return {
         'mean': mean,
