@@ -314,32 +314,6 @@ class SingleOptionNet(nn.Module):
     }
 
 
-class DoeOptionNet(nn.Module):
-
-  def __init__(self, action_dim, body_fn):
-    super(DoeOptionNet, self).__init__()
-    self.pi_body = body_fn()
-    self.beta_body = body_fn()
-    self.fc_pi = layer_init(
-        nn.Linear(self.pi_body.feature_dim, action_dim), 1e-3)
-    self.fc_beta = layer_init(nn.Linear(self.beta_body.feature_dim, 1), 1e-3)
-    self.std = nn.Parameter(torch.zeros((1, action_dim)))
-
-  def forward(self, phi):
-    phi_pi = self.pi_body(phi)
-    mean = F.tanh(self.fc_pi(phi_pi))
-    std = F.softplus(self.std).expand(mean.size(0), -1)
-
-    phi_beta = self.beta_body(phi)
-    beta = F.sigmoid(self.fc_beta(phi_beta))
-
-    return {
-        'mean': mean,
-        'std': std,
-        'beta': beta,
-    }
-
-
 class OptionGaussianActorCriticNet(BaseNet):
 
   def __init__(self,
@@ -426,7 +400,45 @@ class OptionGaussianActorCriticNet(BaseNet):
     }
 
 
-class DoeNet(BaseNet):
+class DoeContiActionNet(BaseNet):
+
+  def __init__(self, feature_dim, action_dim):
+    super().__init__()
+    self.fc_pi = layer_init(nn.Linear(feature_dim, action_dim), 1e-3)
+    self.std = nn.Parameter(torch.zeros((1, action_dim)))
+
+  def forward(self, phi):
+    mean = F.tanh(self.fc_pi(phi))
+    std = F.softplus(self.std).expand(mean.size(0), -1)
+
+    return {
+        'mean': mean,
+        'std': std,
+    }
+
+
+class DoeCriticNet(BaseNet):
+
+  def __init__(self, state_dim, num_options, hidden_units=(64, 64),
+               gate=F.relu):
+    super().__init__()
+    dims = (state_dim,) + hidden_units
+    self.layers = nn.ModuleList([
+        layer_init(nn.Linear(dim_in, dim_out))
+        for dim_in, dim_out in zip(dims[:-1], dims[1:])
+    ])
+    self.gate = gate
+    self.feature_dim = dims[-1]
+    self.logits_lc = layer_init(nn.Linear(dims[-1], num_options))
+
+  def forward(self, x):
+    for layer in self.layers:
+      x = self.gate(layer(x))
+    x = self.logits_lc(x)
+    return x
+
+
+class DoeContiOneOptionNet(BaseNet):
 
   def __init__(self,
                state_dim,
@@ -452,8 +464,12 @@ class DoeNet(BaseNet):
         SingleOptionNet(action_dim, option_body_fn) for _ in range(num_options)
     ])
 
+    self.fc_pi_o = layer_init(
+        nn.Linear(actor_body.feature_dim, num_options), 1e-3)
     self.fc_q_o = layer_init(
         nn.Linear(critic_body.feature_dim, num_options), 1e-3)
+    self.fc_u_o = layer_init(
+        nn.Linear(critic_body.feature_dim, num_options + 1), 1e-3)
 
     ## transformer
     # linear transformation
@@ -467,14 +483,23 @@ class DoeNet(BaseNet):
     self.embed_option = nn.Embedding(num_options, dmodel)
     ## decoder
     # norm state, option concatenation
-    self.de_concat_norm = nn.LayerNorm(critic_body.feature_dim + dmodel)
+    self.de_concat_norm = nn.LayerNorm(state_dim + dmodel)
     # todo: should use option embed vector / embed_option embedding?
     # map state, option concatenation -> dmodel
-    self.de_so_lc = layer_init(
-        nn.Linear(critic_body.feature_dim + dmodel, dmodel))
+    self.de_so_lc = layer_init(nn.Linear(state_dim + dmodel, dmodel))
     self.de_logtis_lc = layer_init(nn.Linear(dmodel, num_options))
 
     self.doe = nn.Transformer(dmodel, nhead, nlayers, nlayers, nhid, dropout)
+
+    ## Primary Action
+    self.action_nets = nn.ModuleList([
+        DoeContiActionNet(state_dim + dmodel, action_dim)
+        for _ in range(num_options)
+    ])
+    self.act_obs_norm = nn.LayerNorm(state_dim + dmodel)
+
+    ## Critic Nets
+    self.q_ot_st = DoeCriticNet(state_dim + dmodel, num_options)
 
     self.num_options = num_options
     self.action_dim = action_dim
@@ -482,10 +507,21 @@ class DoeNet(BaseNet):
 
   def forward(self, obs, prev_options):
     '''
+    num_workers: batch_size
+    Assumptions:
+        obs: config.state_normalizer = MeanStdNormalizer()
     Params:
         obs: [num_workers, state_dim]
+        prev_options: [num_workers, 1]
 
     Returns:
+        pot: [num_workers, num_options]
+        log_pot: [num_workers, num_options]
+        ot: [num_workers]
+        q_ot_st: [num_workers, num_options]
+        pat_mean: [num_workers, act_dim]
+        pat_std: [num_workers, act_dim]
+
         inter_pi: [num_workers, num_options]
         log_inter_pi: [num_workers, num_options]
         beta: [num_workers, num_options]
@@ -496,23 +532,6 @@ class DoeNet(BaseNet):
     '''
     obs = tensor(obs)
     phi = self.phi_body(obs)
-
-    phi_c = self.critic_body(phi)
-    q_o = self.fc_q_o(phi_c)
-
-    num_workers = obs.shape[0]
-    xx = nn.Embedding(4, 10)
-    mm = xx(torch.LongTensor([[0,1,2]]))
-    embed_all_idx =tensor(
-        np.repeat(
-            np.arange(self.num_options, dtype=int)[:, np.newaxis],
-            num_workers,
-            axis=1)).type(torch.long).contiguous()
-    embed_all_idx = range_tensor(self.num_options).repeat(num_workers, 1).t()
-    mt = self.embed_option(embed_all_idx)
-
-    import ipdb
-    ipdb.set_trace(context=7)
 
     mean = []
     std = []
@@ -526,10 +545,81 @@ class DoeNet(BaseNet):
     std = torch.cat(std, dim=1)
     beta = torch.cat(beta, dim=1)
 
+    phi_a = self.actor_body(phi)
+    phi_a = self.fc_pi_o(phi_a)
+    pi_o = F.softmax(phi_a, dim=-1)
+    log_pi_o = F.log_softmax(phi_a, dim=-1)
+
+    phi_c = self.critic_body(phi)
+    q_o = self.fc_q_o(phi_c)
+    u_o = self.fc_u_o(phi_c)
+
+    ## beginning of options part: transformer forward
+    # encoder inputs
+    num_workers = obs.shape[0]
+    # embed_all_idx: [num_options, num_workers]
+    embed_all_idx = range_tensor(self.num_options).repeat(num_workers, 1).t()
+    # wt: [num_options, num_workers, dmodel(embedding size in init)]
+    wt = self.embed_option(embed_all_idx)
+
+    # decoder inputs
+    # vt_1: v_{t-1} [1, num_workers, dmodel(embedding size in init)]
+    vt_1 = self.embed_option(prev_options.t())
+    # obs_cat_1: \tilde{S}_{t-1} [1, num_workers, state_dim + dmodel]
+    obs_cat_1 = torch.cat([phi.unsqueeze(0), vt_1], dim=-1)
+    obs_cat_1 = self.de_concat_norm(obs_cat_1)
+    # obs_hat_1: \tilde{S}_{t-1} [1, num_workers, dmodel]
+    obs_hat_1 = self.de_so_lc(obs_cat_1)
+
+    # transformer outputs
+    # dt: [1, num_workers, dmodel]
+    dt = self.doe(wt, obs_hat_1)
+    # pot_logits: [1, num_workers, num_options]
+    pot_logits = self.de_logtis_lc(dt)
+    # pot_logits/pot/log_pot: [num_workers, num_options]
+    pot_logits = pot_logits.squeeze(0)
+    pot = F.softmax(pot_logits, dim=-1)
+    log_pot = F.log_softmax(pot_logits, dim=-1)
+
+    ## sample options
+    dist = torch.distributions.Categorical(probs=pot)
+    # ot: [num_workers]
+    ot = dist.sample()
+
+    ## beginning of actions part
+    # vt: v_t [1, num_workers, dmodel(embedding size in init)]
+    vt = self.embed_option(ot.unsqueeze(0))
+    # obs_cat: [1, num_workers, state_dim + dmodel(embedding size in init)]
+    obs_cat = torch.cat([phi.unsqueeze(0), vt], dim=-1)
+    # obs_hat: \tilde{S}_t [1, num_workers, dmodel]
+    obs_hat = self.act_obs_norm(obs_cat)
+
+    # generate batch inputs for each option
+    batch_idx = range_tensor(num_workers)
+    # pat_mean/pat_std: [num_workers, act_dim]
+    pat_mean = tensor(np.zeros([num_workers, self.action_dim]))
+    pat_std = tensor(np.zeros([num_workers, self.action_dim]))
+    for o in range(self.num_options):
+      mask = ot == o
+      if mask.any():
+        obs_hat_o = obs_hat.squeeze(0)[mask, :]
+        pat_o = self.action_nets[o](obs_hat_o)
+        pat_mean[mask] = pat_o['mean']
+        pat_std[mask] = pat_o['std']
+
+    q_ot_st = self.q_ot_st(obs_hat.squeeze(0))
+
     return {
+        'pot': pot,
+        'log_pot': log_pot,
+        'ot': ot,
+        'q_ot_st': q_ot_st,
+        'pat_mean': pat_mean,
+        'pat_std': pat_std,
         'mean': mean,
         'std': std,
         'q_o': q_o,
+        'u_o': u_o,
         'inter_pi': pi_o,
         'log_inter_pi': log_pi_o,
         'beta': beta

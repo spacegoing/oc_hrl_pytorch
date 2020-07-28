@@ -127,8 +127,9 @@ def doe_continuous(**kwargs):
   config.task_fn = lambda: Task(config.game, num_envs=config.num_workers)
   config.eval_env = Task(config.game)
 
-  DoeNet = reload(sys.modules['deep_rl.network.network_heads']).DoeNet
-  config.network_fn = lambda: DoeNet(
+  DoeContiOneOptionNet = reload(
+      sys.modules['deep_rl.network.network_heads']).DoeContiOneOptionNet
+  config.network_fn = lambda: DoeContiOneOptionNet(
       config.state_dim,
       config.action_dim,
       num_options=config.num_o,
@@ -154,8 +155,6 @@ def doe_continuous(**kwargs):
 
   DoeAgent = reload(sys.modules['deep_rl.agent.DOE_agent']).DoeAgent
   run_steps(DoeAgent(config))
-
-
 
 
 random_seed(1024)

@@ -77,8 +77,10 @@ class DoeAgent(BaseAgent):
           advantages = ret - v[i]
         else:
           # td_error: [num_workers, 1]
-          td_error = storage.r[i] + config.discount * storage.m[i] * v[i+1] - v[i]
-          advantages = advantages * config.gae_tau * config.discount * storage.m[i] + td_error
+          td_error = storage.r[i] +\
+            config.discount * storage.m[i] * v[i+1] - v[i]
+          advantages = advantages * config.gae_tau * config.discount *\
+            storage.m[i] + td_error
         adv[i] = advantages
         all_ret[i] = ret
 
@@ -151,7 +153,7 @@ class DoeAgent(BaseAgent):
   def rollout(self, storage, config, states):
     with torch.no_grad():
       for _ in range(config.rollout_length):
-        prediction = self.network(states, self.prev_options)
+        prediction = self.network(states, self.prev_options.unsqueeze(1))
         # pi_hat: [num_workers, num_options]
         # probability matrix for all options
         pi_hat = self.compute_pi_hat(prediction, self.prev_options,
@@ -219,7 +221,7 @@ class DoeAgent(BaseAgent):
         self.total_steps += config.num_workers
 
       self.states = states
-      prediction = self.network(states, self.prev_options)
+      prediction = self.network(states, self.prev_options.unsqueeze(1))
       pi_hat = self.compute_pi_hat(prediction, self.prev_options,
                                    self.is_initial_states)
       dist = torch.distributions.Categorical(pi_hat)
