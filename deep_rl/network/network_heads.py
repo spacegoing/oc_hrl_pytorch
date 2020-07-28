@@ -582,9 +582,9 @@ class DoeContiOneOptionNet(BaseNet):
     log_pot = F.log_softmax(pot_logits, dim=-1)
 
     ## sample options
-    dist = torch.distributions.Categorical(probs=pot)
+    po_dist = torch.distributions.Categorical(probs=pot)
     # ot: [num_workers]
-    ot = dist.sample()
+    ot = po_dist.sample()
 
     ## beginning of actions part
     # vt: v_t [1, num_workers, dmodel(embedding size in init)]
@@ -613,6 +613,7 @@ class DoeContiOneOptionNet(BaseNet):
         'pot': pot,
         'log_pot': log_pot,
         'ot': ot,
+        'pot_dist': po_dist,
         'q_ot_st': q_ot_st,
         'pat_mean': pat_mean,
         'pat_std': pat_std,
