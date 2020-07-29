@@ -444,47 +444,28 @@ class DoeContiOneOptionNet(BaseNet):
                state_dim,
                action_dim,
                num_options,
-               phi_body=None,
-               actor_body=None,
-               critic_body=None,
-               option_body_fn=None):
+               nhead=4,
+               dmodel=40,
+               nlayers=3,
+               nhid=50,
+               dropout=0.2):
+    '''
+    nhead: number of heads for multiheadattention
+    dmodel: embedding size & transormer input size (both decoder & encoder)
+            Must Divisible by nhead
+    nhid: hidden dimension for transformer
+    dropout: dropout for transformer
+    '''
     super().__init__()
-    if phi_body is None:
-      phi_body = DummyBody(state_dim)
-    if critic_body is None:
-      critic_body = DummyBody(phi_body.feature_dim)
-    if actor_body is None:
-      actor_body = DummyBody(phi_body.feature_dim)
-
-    self.phi_body = phi_body
-    self.actor_body = actor_body
-    self.critic_body = critic_body
-
-    self.options = nn.ModuleList([
-        SingleOptionNet(action_dim, option_body_fn) for _ in range(num_options)
-    ])
-
-    self.fc_pi_o = layer_init(
-        nn.Linear(actor_body.feature_dim, num_options), 1e-3)
-    self.fc_q_o = layer_init(
-        nn.Linear(critic_body.feature_dim, num_options), 1e-3)
-    self.fc_u_o = layer_init(
-        nn.Linear(critic_body.feature_dim, num_options + 1), 1e-3)
-
     ## transformer
-    # linear transformation
-    nhead = 4
-    dmodel = 40  # divisible by num_heads
-    nlayers = 3
-    nhid = 50
-    dropout = 0.2
     ## encoder
     # option embedding
     self.embed_option = nn.Embedding(num_options, dmodel)
     ## decoder
     # norm state, option concatenation
     self.de_concat_norm = nn.LayerNorm(state_dim + dmodel)
-    # todo: should use option embed vector / embed_option embedding?
+    # todo: should use option embed vector (encoder embedding)
+    # or embed_option embedding (separate decoder embedding)?
     # map state, option concatenation -> dmodel
     self.de_so_lc = layer_init(nn.Linear(state_dim + dmodel, dmodel))
     self.de_logtis_lc = layer_init(nn.Linear(dmodel, num_options))
@@ -521,38 +502,8 @@ class DoeContiOneOptionNet(BaseNet):
         q_ot_st: [num_workers, num_options]
         pat_mean: [num_workers, act_dim]
         pat_std: [num_workers, act_dim]
-
-        inter_pi: [num_workers, num_options]
-        log_inter_pi: [num_workers, num_options]
-        beta: [num_workers, num_options]
-        mean: [num_workers, num_options, action_dim]
-        std: [num_workers, num_options, action_dim]
-        q_o: [num_workers, num_options]
-        u_o: [num_workers, num_options+1]
     '''
     obs = tensor(obs)
-    phi = self.phi_body(obs)
-
-    mean = []
-    std = []
-    beta = []
-    for option in self.options:
-      prediction = option(phi)
-      mean.append(prediction['mean'].unsqueeze(1))
-      std.append(prediction['std'].unsqueeze(1))
-      beta.append(prediction['beta'])
-    mean = torch.cat(mean, dim=1)
-    std = torch.cat(std, dim=1)
-    beta = torch.cat(beta, dim=1)
-
-    phi_a = self.actor_body(phi)
-    phi_a = self.fc_pi_o(phi_a)
-    pi_o = F.softmax(phi_a, dim=-1)
-    log_pi_o = F.log_softmax(phi_a, dim=-1)
-
-    phi_c = self.critic_body(phi)
-    q_o = self.fc_q_o(phi_c)
-    u_o = self.fc_u_o(phi_c)
 
     ## beginning of options part: transformer forward
     # encoder inputs
@@ -566,7 +517,7 @@ class DoeContiOneOptionNet(BaseNet):
     # vt_1: v_{t-1} [1, num_workers, dmodel(embedding size in init)]
     vt_1 = self.embed_option(prev_options.t())
     # obs_cat_1: \tilde{S}_{t-1} [1, num_workers, state_dim + dmodel]
-    obs_cat_1 = torch.cat([phi.unsqueeze(0), vt_1], dim=-1)
+    obs_cat_1 = torch.cat([obs.unsqueeze(0), vt_1], dim=-1)
     obs_cat_1 = self.de_concat_norm(obs_cat_1)
     # obs_hat_1: \tilde{S}_{t-1} [1, num_workers, dmodel]
     obs_hat_1 = self.de_so_lc(obs_cat_1)
@@ -590,7 +541,7 @@ class DoeContiOneOptionNet(BaseNet):
     # vt: v_t [1, num_workers, dmodel(embedding size in init)]
     vt = self.embed_option(ot.unsqueeze(0))
     # obs_cat: [1, num_workers, state_dim + dmodel(embedding size in init)]
-    obs_cat = torch.cat([phi.unsqueeze(0), vt], dim=-1)
+    obs_cat = torch.cat([obs.unsqueeze(0), vt], dim=-1)
     # obs_hat: \tilde{S}_t [1, num_workers, dmodel]
     obs_hat = self.act_obs_norm(obs_cat)
 
@@ -617,11 +568,4 @@ class DoeContiOneOptionNet(BaseNet):
         'q_ot_st': q_ot_st,
         'pat_mean': pat_mean,
         'pat_std': pat_std,
-        'mean': mean,
-        'std': std,
-        'q_o': q_o,
-        'u_o': u_o,
-        'inter_pi': pi_o,
-        'log_inter_pi': log_pi_o,
-        'beta': beta
     }

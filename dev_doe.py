@@ -104,7 +104,7 @@ def ppoc_continuous(**kwargs):
   run_steps(PPOCAgent(config))
 
 
-# PPOC
+# DOE
 def doe_continuous(**kwargs):
   generate_tag(kwargs)
   kwargs.setdefault('log_level', 0)
@@ -133,13 +133,11 @@ def doe_continuous(**kwargs):
       config.state_dim,
       config.action_dim,
       num_options=config.num_o,
-      actor_body=FCBody(
-          config.state_dim, hidden_units=hidden_units, gate=config.gate),
-      critic_body=FCBody(
-          config.state_dim, hidden_units=hidden_units, gate=config.gate),
-      option_body_fn=lambda: FCBody(
-          config.state_dim, hidden_units=hidden_units, gate=config.gate),
-  )
+      nhead=4,
+      dmodel=40,
+      nlayers=3,
+      nhid=50,
+      dropout=0.2)
   config.optimizer_fn = lambda params: torch.optim.Adam(params, 3e-4, eps=1e-5)
   config.beta_reg = 0.01
   config.discount = 0.99
@@ -150,7 +148,7 @@ def doe_continuous(**kwargs):
   config.optimization_epochs = 10
   config.mini_batch_size = 64
   config.ppo_ratio_clip = 0.2
-  config.log_interval = 2048
+  config.log_interval = config.rollout_length * config.num_workers
   config.state_normalizer = MeanStdNormalizer()
 
   DoeAgent = reload(sys.modules['deep_rl.agent.DOE_agent']).DoeAgent
@@ -161,14 +159,16 @@ random_seed(1024)
 set_one_thread()
 select_device(0)
 game = 'HalfCheetah-v2'
-run = 40
+run = 4
 tasks = False
-num_workers = 3
+num_workers = 4
 gate = nn.Tanh()
 # OC
 remark = 'DO_OC'
 # PPOC
 remark = 'DO_PPOC'
+# DOE
+remark = 'DO_DOE'
 kwargs = dict(
     game=game,
     run=run,
