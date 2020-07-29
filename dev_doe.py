@@ -106,6 +106,12 @@ def ppoc_continuous(**kwargs):
 
 # DOE
 def doe_continuous(**kwargs):
+  nhead = 4
+  dmodel = 40
+  nlayers = 3
+  nhid = 50
+  kwargs['remark'] = 'DOE_nhead%d_dm%d_nl%d_nhid%d' %\
+    (nhead, dmodel, nlayers, nhid)
   generate_tag(kwargs)
   kwargs.setdefault('log_level', 0)
   kwargs.setdefault('num_o', 4)
@@ -133,10 +139,10 @@ def doe_continuous(**kwargs):
       config.state_dim,
       config.action_dim,
       num_options=config.num_o,
-      nhead=4,
-      dmodel=40,
-      nlayers=3,
-      nhid=50,
+      nhead=nhead,
+      dmodel=dmodel,
+      nlayers=nlayers,
+      nhid=nhid,
       dropout=0.2)
   config.optimizer_fn = lambda params: torch.optim.Adam(params, 3e-4, eps=1e-5)
   config.beta_reg = 0.01
