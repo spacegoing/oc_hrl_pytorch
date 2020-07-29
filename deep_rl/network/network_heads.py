@@ -480,7 +480,7 @@ class DoeContiOneOptionNet(BaseNet):
     self.act_obs_norm = nn.LayerNorm(state_dim + dmodel)
 
     ## Critic Nets
-    self.q_ot_st = DoeCriticNet(state_dim + dmodel, num_options)
+    self.q_o_st = DoeCriticNet(state_dim + dmodel, num_options)
 
     self.num_options = num_options
     self.action_dim = action_dim
@@ -499,7 +499,7 @@ class DoeContiOneOptionNet(BaseNet):
         pot: [num_workers, num_options]
         log_pot: [num_workers, num_options]
         ot: [num_workers]
-        q_ot_st: [num_workers, num_options]
+        q_o_st: [num_workers, num_options]
         pat_mean: [num_workers, act_dim]
         pat_std: [num_workers, act_dim]
     '''
@@ -533,9 +533,9 @@ class DoeContiOneOptionNet(BaseNet):
     log_pot = F.log_softmax(pot_logits, dim=-1)
 
     ## sample options
-    po_dist = torch.distributions.Categorical(probs=pot)
+    pot_dist = torch.distributions.Categorical(probs=pot)
     # ot: [num_workers]
-    ot = po_dist.sample()
+    ot = pot_dist.sample()
 
     ## beginning of actions part
     # vt: v_t [1, num_workers, dmodel(embedding size in init)]
@@ -558,14 +558,14 @@ class DoeContiOneOptionNet(BaseNet):
         pat_mean[mask] = pat_o['mean']
         pat_std[mask] = pat_o['std']
 
-    q_ot_st = self.q_ot_st(obs_hat.squeeze(0))
+    q_o_st = self.q_o_st(obs_hat.squeeze(0))
 
     return {
         'pot': pot,
         'log_pot': log_pot,
         'ot': ot,
-        'pot_dist': po_dist,
-        'q_ot_st': q_ot_st,
+        'pot_dist': pot_dist,
+        'q_o_st': q_o_st,
         'pat_mean': pat_mean,
         'pat_std': pat_std,
     }

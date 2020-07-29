@@ -163,7 +163,7 @@ def doe_continuous(**kwargs):
 
 random_seed(1024)
 set_one_thread()
-select_device(0)
+select_device(-1)
 game = 'HalfCheetah-v2'
 run = 4
 tasks = False
