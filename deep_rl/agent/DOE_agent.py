@@ -59,8 +59,10 @@ class DoeAgent(BaseAgent):
   def learn(self, storage):
     config = self.config
 
-    states, at_old, pat_log_prob_old, ot_old, returns, advantages, inits, prev_options = storage.cat(
-        ['s', 'at', 'pat_log_prob', 'ot', 'ret', 'adv', 'init', 'prev_o'])
+    states, at_old, pat_log_prob_old, ot_old, po_t_log_prob_old, \
+      returns, advantages, inits, prev_options = storage.cat(
+        ['s', 'at', 'pat_log_prob', 'ot', 'po_t_log', \
+          'ret', 'adv', 'init','prev_o'])
     advantages = (advantages - advantages.mean()) / advantages.std()
 
     for _ in range(config.optimization_epochs):
@@ -83,8 +85,9 @@ class DoeAgent(BaseAgent):
         batch_all_index = range_tensor(len(batch_indices))
         sampled_states = states[batch_indices]
         sampled_at_old = at_old[batch_indices]
-        sampled_ot_old = ot_old[batch_indices]
         sampled_pat_log_prob_old = pat_log_prob_old[batch_indices]
+        sampled_ot_old = ot_old[batch_indices]
+        sampled_po_t_log_prob_old = po_t_log_prob_old[batch_indices]
         sampled_returns = returns[batch_indices]
         sampled_advantages = advantages[batch_indices]
         sampled_inits = inits[batch_indices]
@@ -106,12 +109,22 @@ class DoeAgent(BaseAgent):
             1.0 - self.config.ppo_ratio_clip,
             1.0 + self.config.ppo_ratio_clip) * sampled_advantages
         pat_loss = -torch.min(pat_obj, pat_obj_clipped).mean()
+
+        pot_log_prob_new = prediction['po_t_log'][batch_all_index,
+                                                  sampled_ot_old.squeeze(-1)]
+        pot_log_prob_old = sampled_po_t_log_prob_old[batch_all_index,
+                                                     sampled_ot_old.squeeze(-1)]
+        pot_ratio = (pot_log_prob_new - pot_log_prob_old).exp()
+        pot_obj = pot_ratio * sampled_advantages
+        pot_obj_clipped = pot_ratio.clamp(
+            1.0 - self.config.ppo_ratio_clip,
+            1.0 + self.config.ppo_ratio_clip) * sampled_advantages
+        pot_loss = -torch.min(pot_obj, pot_obj_clipped).mean()
+        po_t_ent = -(prediction['po_t_log'] * prediction['po_t']).sum(-1).mean()
+        pot_loss = pot_loss - config.entropy_weight * po_t_ent
+
         q_loss = (prediction['q_o_st'].gather(1, sampled_ot_old) -
                   sampled_returns).pow(2).mul(0.5).mean()
-
-        pot_ent = -(prediction['log_pot'] * prediction['pot']).sum(-1).mean()
-        pot_loss = -(prediction['log_pot'].gather(1, sampled_ot_old) * sampled_advantages).mean()\
-                        - config.entropy_weight * pot_ent
 
         self.opt.zero_grad()
         (pat_loss + q_loss + pot_loss).backward()
@@ -120,6 +133,16 @@ class DoeAgent(BaseAgent):
         self.opt.step()
 
   def rollout(self, storage, config, states):
+    '''
+    Naming Conventions:
+    if o does not follow timestamp t, it means for all options:
+      q_o_st: [num_workers, num_options] $Q_o_t(O,S_t)$
+      po_t/po_t_log: [num_workers, num_options] $P(O|S_t,o_{t-1};w_t)$
+
+    if ot, it means for O=ot:
+      q_ot_st: [num_workers, 1] $Q_o_t(O=ot, S_t)$
+      pot/pot_log: [num_workers, 1] $P(O=ot|S_t,o_{t-1};w_t)$
+    '''
     with torch.no_grad():
       for _ in range(config.rollout_length):
         prediction = self.network(states, self.prev_options.unsqueeze(1))
@@ -128,9 +151,9 @@ class DoeAgent(BaseAgent):
         self.logger.add_scalar('o_t', ot, log_level=5)
         self.logger.add_scalar('o_t_0', ot[0], log_level=5)
         self.logger.add_scalar(
-            'pot_ent', prediction['pot_dist'].entropy(), log_level=5)
+            'po_t_ent', prediction['po_t_dist'].entropy(), log_level=5)
         self.logger.add_scalar(
-            'pot_log_prob', prediction['pot_dist'].log_prob(ot), log_level=5)
+            'pot_log_prob', prediction['po_t_dist'].log_prob(ot), log_level=5)
 
         # mean/std: [num_workers, action_dim]
         pat_mean = prediction['pat_mean']

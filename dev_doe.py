@@ -110,7 +110,7 @@ def doe_continuous(**kwargs):
   dmodel = 40
   nlayers = 3
   nhid = 50
-  kwargs['remark'] = 'DOE_nhead%d_dm%d_nl%d_nhid%d' %\
+  kwargs['remark'] = 'test_ppoo_ststyle_DOE_nhead%d_dm%d_nl%d_nhid%d' %\
     (nhead, dmodel, nlayers, nhid)
   generate_tag(kwargs)
   kwargs.setdefault('log_level', 0)

@@ -488,7 +488,16 @@ class DoeContiOneOptionNet(BaseNet):
 
   def forward(self, obs, prev_options):
     '''
-    num_workers: batch_size
+    Naming Conventions:
+    1. num_workers: batch_size
+    2. if o does not follow timestamp t, it means for all options:
+         q_o_st: [num_workers, num_options] $Q_o_t(O,S_t)$
+         po_t/po_t_log: [num_workers, num_options] $P(O|S_t,o_{t-1};w_t)$
+
+       if ot, it means for O=ot:
+         q_ot_st: [num_workers, 1] $Q_o_t(O=ot, S_t)$
+         pot/pot_log: [num_workers, 1] $P(O=ot|S_t,o_{t-1};w_t)$
+
     Assumptions:
         obs: config.state_normalizer = MeanStdNormalizer()
     Params:
@@ -496,8 +505,8 @@ class DoeContiOneOptionNet(BaseNet):
         prev_options: [num_workers, 1]
 
     Returns:
-        pot: [num_workers, num_options]
-        log_pot: [num_workers, num_options]
+        po_t: [num_workers, num_options]
+        po_t_log: [num_workers, num_options]
         ot: [num_workers]
         q_o_st: [num_workers, num_options]
         pat_mean: [num_workers, act_dim]
@@ -525,17 +534,17 @@ class DoeContiOneOptionNet(BaseNet):
     # transformer outputs
     # dt: [1, num_workers, dmodel]
     dt = self.doe(wt, obs_hat_1)
-    # pot_logits: [1, num_workers, num_options]
-    pot_logits = self.de_logtis_lc(dt)
-    # pot_logits/pot/log_pot: [num_workers, num_options]
-    pot_logits = pot_logits.squeeze(0)
-    pot = F.softmax(pot_logits, dim=-1)
-    log_pot = F.log_softmax(pot_logits, dim=-1)
+    # po_t_logits: [1, num_workers, num_options]
+    po_t_logits = self.de_logtis_lc(dt)
+    # po_t_logits/po_t/po_t_log: [num_workers, num_options]
+    po_t_logits = po_t_logits.squeeze(0)
+    po_t = F.softmax(po_t_logits, dim=-1)
+    po_t_log = F.log_softmax(po_t_logits, dim=-1)
 
     ## sample options
-    pot_dist = torch.distributions.Categorical(probs=pot)
+    po_t_dist = torch.distributions.Categorical(probs=po_t)
     # ot: [num_workers]
-    ot = pot_dist.sample()
+    ot = po_t_dist.sample()
 
     ## beginning of actions part
     # vt: v_t [1, num_workers, dmodel(embedding size in init)]
@@ -561,10 +570,10 @@ class DoeContiOneOptionNet(BaseNet):
     q_o_st = self.q_o_st(obs_hat.squeeze(0))
 
     return {
-        'pot': pot,
-        'log_pot': log_pot,
+        'po_t': po_t,
+        'po_t_log': po_t_log,
         'ot': ot,
-        'pot_dist': pot_dist,
+        'po_t_dist': po_t_dist,
         'q_o_st': q_o_st,
         'pat_mean': pat_mean,
         'pat_std': pat_std,
