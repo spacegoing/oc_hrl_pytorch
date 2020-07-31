@@ -41,36 +41,37 @@ class DoeAgent(BaseAgent):
     config = self.config
 
     q_ot_st = storage.q_ot_st
-    adv = storage.adv
-    all_ret = storage.ret
+    a_adv = storage.a_adv
+    all_a_ret = storage.a_ret
 
     with torch.no_grad():
-      # ret: [num_workers, 1]
-      ret = q_ot_st[-1]
-      # advantages: [num_workers, 1]
-      advantages = tensor(np.zeros((config.num_workers, 1)))
+      # a_ret: [num_workers, 1]
+      a_ret = q_ot_st[-1]
+      # a_A: [num_workers, 1]
+      a_A = tensor(np.zeros((config.num_workers, 1)))
       for i in reversed(range(config.rollout_length)):
         # m: [num_workers, 1]
-        ret = storage.r[i] + config.discount * storage.m[i] * ret
+        a_ret = storage.r[i] + config.discount * storage.m[i] * a_ret
         if not config.use_gae:
-          advantages = ret - q_ot_st[i]
+          a_A = a_ret - q_ot_st[i]
         else:
           # td_error: [num_workers, 1]
           td_error = storage.r[i] +\
+          a_td_error = storage.r[i] +\
             config.discount * storage.m[i] * q_ot_st[i+1] - q_ot_st[i]
-          advantages = advantages * config.gae_tau * config.discount *\
-            storage.m[i] + td_error
-        adv[i] = advantages
-        all_ret[i] = ret
+          a_A = a_A * config.gae_tau * config.discount *\
+            storage.m[i] + a_td_error
+        a_adv[i] = a_A
+        all_a_ret[i] = a_ret
 
   def learn(self, storage):
     config = self.config
 
     states, at_old, pat_log_prob_old, ot_old, po_t_log_prob_old, \
-      returns, advantages, inits, prev_options = storage.cat(
+      a_ret, a_adv, inits, prev_options = storage.cat(
         ['s', 'at', 'pat_log_prob', 'ot', 'po_t_log', \
-          'ret', 'adv', 'init','prev_o'])
-    advantages = (advantages - advantages.mean()) / advantages.std()
+          'a_ret', 'a_adv', 'init','prev_o'])
+    a_adv = (a_adv - a_adv.mean()) / a_adv.std()
 
     for _ in range(config.optimization_epochs):
       sampler = random_sample(np.arange(states.size(0)), config.mini_batch_size)
@@ -83,8 +84,8 @@ class DoeAgent(BaseAgent):
         sampled_actions: [batch_size, act_dim]
         sampled_options: [batch_size, 1]
         sampled_log_pi_bar_old: [batch_size, 1]
-        sampled_returns: [batch_size, 1]
-        sampled_advantages: [batch_size, 1]
+        sampled_a_ret: [batch_size, 1]
+        sampled_a_adv: [batch_size, 1]
         sampled_inits: [batch_size, 1]
         sampled_prev_options: [batch_size, 1]
         '''
@@ -95,8 +96,8 @@ class DoeAgent(BaseAgent):
         sampled_pat_log_prob_old = pat_log_prob_old[batch_indices]
         sampled_ot_old = ot_old[batch_indices]
         sampled_po_t_log_prob_old = po_t_log_prob_old[batch_indices]
-        sampled_returns = returns[batch_indices]
-        sampled_advantages = advantages[batch_indices]
+        sampled_a_ret = a_ret[batch_indices]
+        sampled_a_adv = a_adv[batch_indices]
         sampled_inits = inits[batch_indices]
         sampled_prev_options = prev_options[batch_indices]
 
@@ -111,10 +112,10 @@ class DoeAgent(BaseAgent):
         pat_log_prob_new = pat_new.add(1e-5).log()
 
         pat_ratio = (pat_log_prob_new - sampled_pat_log_prob_old).exp()
-        pat_obj = pat_ratio * sampled_advantages
+        pat_obj = pat_ratio * sampled_a_adv
         pat_obj_clipped = pat_ratio.clamp(
             1.0 - self.config.ppo_ratio_clip_action,
-            1.0 + self.config.ppo_ratio_clip_action) * sampled_advantages
+            1.0 + self.config.ppo_ratio_clip_action) * sampled_a_adv
         pat_loss = -torch.min(pat_obj, pat_obj_clipped).mean()
 
         pot_log_prob_new = prediction['po_t_log'][batch_all_index,
@@ -122,17 +123,16 @@ class DoeAgent(BaseAgent):
         pot_log_prob_old = sampled_po_t_log_prob_old[batch_all_index,
                                                      sampled_ot_old.squeeze(-1)]
         pot_ratio = (pot_log_prob_new - pot_log_prob_old).exp()
-        pot_obj = pot_ratio * sampled_advantages
+        pot_obj = pot_ratio * sampled_a_adv
         option_clip_ratio = self._option_clip_schedular()
         pot_obj_clipped = pot_ratio.clamp(
-            1.0 - option_clip_ratio,
-            1.0 + option_clip_ratio) * sampled_advantages
+            1.0 - option_clip_ratio, 1.0 + option_clip_ratio) * sampled_a_adv
         pot_loss = -torch.min(pot_obj, pot_obj_clipped).mean()
         po_t_ent = -(prediction['po_t_log'] * prediction['po_t']).sum(-1).mean()
         pot_loss = pot_loss - config.entropy_weight * po_t_ent
 
         q_loss = (prediction['q_o_st'].gather(1, sampled_ot_old) -
-                  sampled_returns).pow(2).mul(0.5).mean()
+                  sampled_a_ret).pow(2).mul(0.5).mean()
 
         self.opt.zero_grad()
         (pat_loss + q_loss + pot_loss).backward()
@@ -248,7 +248,8 @@ class DoeAgent(BaseAgent):
 
   def step(self):
     config = self.config
-    storage = Storage(config.rollout_length)
+    storage = Storage(config.rollout_length,
+                      ['a_adv', 'o_adv', 'a_ret', 'v_st'])
     states = self.states
     self.rollout(storage, config, states)
     self.compute_adv(storage)

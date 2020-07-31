@@ -16,6 +16,7 @@
 - is Qos - Qos_1 correct?
 - ppo clip ratio small -> large
 - ppo option adv use vst not qost
+- rollout length short -> long
 
 ### Option Nets ###
 
