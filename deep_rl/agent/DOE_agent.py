@@ -241,7 +241,8 @@ class DoeAgent(BaseAgent):
       })
       storage.placeholder()
 
-      if config.log_analyze_stat:
+      if config.log_analyze_stat and self.total_steps % (config.max_steps //
+                                                         10):
         with open('./analyze/%s' % (config.log_file_apdx), 'wb') as f:
           pickle.dump(self.logallsteps_storage, f)
 
