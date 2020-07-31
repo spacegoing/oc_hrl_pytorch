@@ -96,7 +96,6 @@ def plot_key_figure(nw_ts_v_dict, key, key_settings=None, plt_settings=None):
     ax = plt.axes()
     sns.heatmap(value_mat, cmap=plt_settings['cmap'])
     ax.set_title(plt_settings['title'])
-    plt.show()
 
   key_fn = {'ot': [ot_value_fn, ot_plot_fn]}
   if key in key_fn:
@@ -127,13 +126,39 @@ if __name__ == "__main__":
   # list to dict of np array
   keys = ['s', 'r', 'm', 'at', 'ot', 'pot_ent', 'q_ot_st']
 
+  ## initial run git:1e48131
+  # performance up->down
+  # best
   nm = 'HalfCheetah-v2-gate_Tanh()-num_workers_4-remark_ShareVnet_DOE_nhead4_dm100_nl3_nhid50-tasks_False-run-4-200731-172620'
   tsbd_be_end_ts = [[570000, 630000], [628000, 652000], [904000, 972000]]
   plot_file(nm, tsbd_be_end_ts, keys, plot_keys=keys)
-
+  plt.show()
+  # worst
   nm = 'HalfCheetah-v2-gate_Tanh()-num_workers_4-remark_ShareVnet_DOE_nhead4_dm100_nl3_nhid50-tasks_False-run-4-200731-172622'
   tsbd_be_end_ts = [[524000, 556000], [964000, 996000]]
   plot_file(nm, tsbd_be_end_ts, keys, plot_keys=keys)
+  plt.show()
+
+  # compare best, mid, worst
+  tsbd_be_end_ts = [[1004000, 1084000], [1212000, 1280000]]
+  # best
+  nm = 'HalfCheetah-v2-gate_Tanh()-num_workers_4-remark_ShareVnet_DOE_nhead4_dm100_nl3_nhid50-tasks_False-run-4-200731-172620'
+  plot_file(nm, tsbd_be_end_ts, keys, plot_keys=keys)
+  plt.show()
+  # mid
+  nm = 'HalfCheetah-v2-gate_Tanh()-num_workers_4-remark_ShareVnet_DOE_nhead4_dm100_nl3_nhid50-tasks_False-run-4-200731-172618'
+  plot_file(nm, tsbd_be_end_ts, keys, plot_keys=keys)
+  plt.show()
+  nm = 'HalfCheetah-v2-gate_Tanh()-num_workers_4-remark_ShareVnet_DOE_nhead4_dm100_nl3_nhid50-tasks_False-run-4-200731-172624'
+  plot_file(nm, tsbd_be_end_ts, keys, plot_keys=keys)
+  plt.show()
+  # worst
+  nm = 'HalfCheetah-v2-gate_Tanh()-num_workers_4-remark_ShareVnet_DOE_nhead4_dm100_nl3_nhid50-tasks_False-run-4-200731-172622'
+  plot_file(nm, tsbd_be_end_ts, keys, plot_keys=keys)
+  plt.show()
+
+
+
 # def get_padded_ts_array(tsbd_be_end_ts, pad_len):
 #   bch_be_end_ts = tsbd_ts_bch_step(tsbd_be_end_ts)
 #   pad_len = 100

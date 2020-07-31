@@ -33,6 +33,24 @@
 - action, option have different value functions
 - value function use transformer encoding
 
+## Problems ##
+
+### More Independent Between Workers, Better performance ###
+- initial run git:1e48131
+- Best run, each worker's option independent
+- Performance decrease, option choices between workers more
+  related
+  
+#### conclusion ####
+- option choice rely too much on previous one
+- each period has an advantage option, no matter what state, it
+  turns to choose that option
+
+#### Solutions ####
+1. decoupling previous option gradients: options used by decoder
+   detached from embedding
+2. decoupling action option gradients: options used by action do
+   not pass gradients back to embedding
 
 # Origin Readme #
 
