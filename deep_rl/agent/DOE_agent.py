@@ -40,27 +40,48 @@ class DoeAgent(BaseAgent):
   def compute_adv(self, storage):
     config = self.config
 
+    q_o_st = storage.q_o_st
+    po_t = storage.po_t
+    o_adv = storage.o_adv
+    all_v_st = storage.v_st
+
+    def get_v_st(q_o_st, po_t):
+      return (q_o_st * po_t).sum(axis=1).unsqueeze(-1)
+
     q_ot_st = storage.q_ot_st
     a_adv = storage.a_adv
     all_a_ret = storage.a_ret
 
     with torch.no_grad():
+      # v_st: [num_workers, 1]
+      # q_o_st[-1]/po_t[-1]: [num_workers, num_options]
+      v_st = get_v_st(q_o_st[-1], po_t[-1])
+      # o_A: [num_workers, 1]
+      o_A = tensor(np.zeros((config.num_workers, 1)))
       # a_ret: [num_workers, 1]
       a_ret = q_ot_st[-1]
       # a_A: [num_workers, 1]
       a_A = tensor(np.zeros((config.num_workers, 1)))
       for i in reversed(range(config.rollout_length)):
         # m: [num_workers, 1]
+        v_st = storage.r[i] + config.discount * storage.m[i] * v_st
         a_ret = storage.r[i] + config.discount * storage.m[i] * a_ret
         if not config.use_gae:
           a_A = a_ret - q_ot_st[i]
+          o_A = v_st - get_v_st(q_o_st[i], po_t[i])
         else:
           # td_error: [num_workers, 1]
-          td_error = storage.r[i] +\
+          o_td_error = storage.r[i] + (config.discount * storage.m[i] *
+                                       get_v_st(q_o_st[i + 1], po_t[i + 1])
+                                      ) - get_v_st(q_o_st[i], po_t[i])
+          o_A = o_A * config.gae_tau * config.discount *\
+            storage.m[i] + o_td_error
           a_td_error = storage.r[i] +\
             config.discount * storage.m[i] * q_ot_st[i+1] - q_ot_st[i]
           a_A = a_A * config.gae_tau * config.discount *\
             storage.m[i] + a_td_error
+        o_adv[i] = o_A
+        all_v_st[i] = v_st
         a_adv[i] = a_A
         all_a_ret[i] = a_ret
 
@@ -68,10 +89,11 @@ class DoeAgent(BaseAgent):
     config = self.config
 
     states, at_old, pat_log_prob_old, ot_old, po_t_log_prob_old, \
-      a_ret, a_adv, inits, prev_options = storage.cat(
+      v_st, o_adv, a_ret, a_adv, inits, prev_options = storage.cat(
         ['s', 'at', 'pat_log_prob', 'ot', 'po_t_log', \
-          'a_ret', 'a_adv', 'init','prev_o'])
+         'v_st', 'o_adv', 'a_ret', 'a_adv', 'init','prev_o'])
     a_adv = (a_adv - a_adv.mean()) / a_adv.std()
+    o_adv = (o_adv - o_adv.mean()) / o_adv.std()
 
     for _ in range(config.optimization_epochs):
       sampler = random_sample(np.arange(states.size(0)), config.mini_batch_size)
@@ -84,6 +106,8 @@ class DoeAgent(BaseAgent):
         sampled_actions: [batch_size, act_dim]
         sampled_options: [batch_size, 1]
         sampled_log_pi_bar_old: [batch_size, 1]
+        sampled_v_st: [batch_size, 1]
+        sampled_o_adv: [batch_size, 1]
         sampled_a_ret: [batch_size, 1]
         sampled_a_adv: [batch_size, 1]
         sampled_inits: [batch_size, 1]
@@ -96,6 +120,8 @@ class DoeAgent(BaseAgent):
         sampled_pat_log_prob_old = pat_log_prob_old[batch_indices]
         sampled_ot_old = ot_old[batch_indices]
         sampled_po_t_log_prob_old = po_t_log_prob_old[batch_indices]
+        sampled_v_st = v_st[batch_indices]
+        sampled_o_adv = o_adv[batch_indices]
         sampled_a_ret = a_ret[batch_indices]
         sampled_a_adv = a_adv[batch_indices]
         sampled_inits = inits[batch_indices]
@@ -123,16 +149,19 @@ class DoeAgent(BaseAgent):
         pot_log_prob_old = sampled_po_t_log_prob_old[batch_all_index,
                                                      sampled_ot_old.squeeze(-1)]
         pot_ratio = (pot_log_prob_new - pot_log_prob_old).exp()
-        pot_obj = pot_ratio * sampled_a_adv
+        pot_obj = pot_ratio * sampled_o_adv
         option_clip_ratio = self._option_clip_schedular()
         pot_obj_clipped = pot_ratio.clamp(
-            1.0 - option_clip_ratio, 1.0 + option_clip_ratio) * sampled_a_adv
+            1.0 - option_clip_ratio, 1.0 + option_clip_ratio) * sampled_o_adv
         pot_loss = -torch.min(pot_obj, pot_obj_clipped).mean()
         po_t_ent = -(prediction['po_t_log'] * prediction['po_t']).sum(-1).mean()
         pot_loss = pot_loss - config.entropy_weight * po_t_ent
 
-        q_loss = (prediction['q_o_st'].gather(1, sampled_ot_old) -
-                  sampled_a_ret).pow(2).mul(0.5).mean()
+        # q_loss = (prediction['q_o_st'].gather(1, sampled_ot_old) -
+        #           sampled_a_ret).pow(2).mul(0.5).mean()
+        q_loss = (prediction['q_o_st'] *
+                  prediction['po_t'].sum(axis=1).unsqueeze(-1) -
+                  sampled_v_st).pow(2).mul(0.5).mean()
 
         self.opt.zero_grad()
         (pat_loss + q_loss + pot_loss).backward()
