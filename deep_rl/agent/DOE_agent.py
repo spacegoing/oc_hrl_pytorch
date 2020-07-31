@@ -8,6 +8,7 @@ from ..network import *
 from ..component import *
 from .BaseAgent import *
 from skimage import color
+import pickle
 
 
 class DoeAgent(BaseAgent):
@@ -29,6 +30,7 @@ class DoeAgent(BaseAgent):
     self.count = 0
 
     self.all_options = []
+    self.logallsteps_storage = []
 
   def _option_clip_schedular(self):
     return self.config.ppo_ratio_clip_option_max - (
@@ -215,6 +217,18 @@ class DoeAgent(BaseAgent):
         states = next_states
         self.total_steps += config.num_workers
 
+        if config.log_analyze_stat:
+          # log analyze stats
+          self.logallsteps_storage.append({
+              's': states,
+              'r': np.expand_dims(rewards, axis=-1),
+              'm': np.expand_dims(1 - terminals, axis=-1),
+              'at': to_np(at),
+              'ot': to_np(ot.unsqueeze(-1)),
+              'pot_ent': to_np(prediction['po_t_dist'].entropy().unsqueeze(-1)),
+              'q_ot_st': to_np(prediction['q_o_st']),
+          })
+
       self.states = states
       prediction = self.network(states, self.prev_options.unsqueeze(-1))
       ot = prediction['ot']
@@ -226,6 +240,10 @@ class DoeAgent(BaseAgent):
           'q_ot_st': prediction['q_o_st'][self.worker_index, ot].unsqueeze(-1)
       })
       storage.placeholder()
+
+      if config.log_analyze_stat:
+        with open('./analyze/%s' % (config.log_file_apdx), 'wb') as f:
+          pickle.dump(self.logallsteps_storage, f)
 
   def step(self):
     config = self.config

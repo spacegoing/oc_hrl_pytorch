@@ -109,14 +109,14 @@ def doe_continuous(**kwargs):
   discount = 0.99
   use_gae = True
   gae_tau = 0.95
-  ppo_ratio_clip_option_max = 0.9
+  ppo_ratio_clip_option_max = 0.4
   ppo_ratio_clip_option_min = 0.2
   # kwargs['remark'] = 'CO_Schedular_r%.2f_UseGae%s_L%.2f_' %\
   #   (discount, str(use_gae), gae_tau)
   nhead = 4
-  dmodel = 40
+  dmodel = 100
   nlayers = 3
-  nhid = 100
+  nhid = 50
   kwargs['remark'] = 'ShareVnet_DOE_nhead%d_dm%d_nl%d_nhid%d' %\
     (nhead, dmodel, nlayers, nhid)
   # kwargs['remark'] = 'CO_Schedular_DOE_nhead%d_dm%d_nl%d_nhid%d' %\
@@ -130,6 +130,7 @@ def doe_continuous(**kwargs):
   kwargs.setdefault('max_steps', 2e6)
   config = Config()
   config.merge(kwargs)
+  config.log_analyze_stat = True
 
   if config.tasks:
     set_tasks(config)
@@ -175,7 +176,7 @@ random_seed(1024)
 set_one_thread()
 select_device(-1)
 game = 'HalfCheetah-v2'
-run = 0
+run = 4
 tasks = False
 num_workers = 4
 gate = nn.Tanh()

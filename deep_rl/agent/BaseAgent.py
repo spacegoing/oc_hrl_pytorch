@@ -16,7 +16,7 @@ class BaseAgent:
 
   def __init__(self, config):
     self.config = config
-    self.logger = get_logger(tag=config.tag, log_level=config.log_level)
+    self.logger = get_logger(tag=config.tag, log_level=config.log_level, config)
     self.task_ind = 0
 
   def close(self):
