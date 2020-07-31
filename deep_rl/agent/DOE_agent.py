@@ -30,6 +30,11 @@ class DoeAgent(BaseAgent):
 
     self.all_options = []
 
+  def _option_clip_schedular(self):
+    return self.config.ppo_ratio_clip_option_max - (
+        self.config.ppo_ratio_clip_option_max -
+        self.config.ppo_ratio_clip_option_min) * self.total_steps
+
   def compute_adv(self, storage):
     config = self.config
 
@@ -106,8 +111,8 @@ class DoeAgent(BaseAgent):
         pat_ratio = (pat_log_prob_new - sampled_pat_log_prob_old).exp()
         pat_obj = pat_ratio * sampled_advantages
         pat_obj_clipped = pat_ratio.clamp(
-            1.0 - self.config.ppo_ratio_clip,
-            1.0 + self.config.ppo_ratio_clip) * sampled_advantages
+            1.0 - self.config.ppo_ratio_clip_action,
+            1.0 + self.config.ppo_ratio_clip_action) * sampled_advantages
         pat_loss = -torch.min(pat_obj, pat_obj_clipped).mean()
 
         pot_log_prob_new = prediction['po_t_log'][batch_all_index,
@@ -116,9 +121,10 @@ class DoeAgent(BaseAgent):
                                                      sampled_ot_old.squeeze(-1)]
         pot_ratio = (pot_log_prob_new - pot_log_prob_old).exp()
         pot_obj = pot_ratio * sampled_advantages
+        option_clip_ratio = self._option_clip_schedular()
         pot_obj_clipped = pot_ratio.clamp(
-            1.0 - self.config.ppo_ratio_clip,
-            1.0 + self.config.ppo_ratio_clip) * sampled_advantages
+            1.0 - option_clip_ratio,
+            1.0 + option_clip_ratio) * sampled_advantages
         pot_loss = -torch.min(pot_obj, pot_obj_clipped).mean()
         po_t_ent = -(prediction['po_t_log'] * prediction['po_t']).sum(-1).mean()
         pot_loss = pot_loss - config.entropy_weight * po_t_ent

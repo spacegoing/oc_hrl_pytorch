@@ -106,12 +106,21 @@ def ppoc_continuous(**kwargs):
 
 # DOE
 def doe_continuous(**kwargs):
+  discount = 0.99
+  use_gae = True
+  gae_tau = 0.95
+  ppo_ratio_clip_option_max = 0.9
+  ppo_ratio_clip_option_min = 0.2
+  # kwargs['remark'] = 'CO_Schedular_r%.2f_UseGae%s_L%.2f_' %\
+  #   (discount, str(use_gae), gae_tau)
   nhead = 4
   dmodel = 40
   nlayers = 3
-  nhid = 50
-  kwargs['remark'] = 'test_ppoo_ststyle_DOE_nhead%d_dm%d_nl%d_nhid%d' %\
+  nhid = 100
+  kwargs['remark'] = 'ShareVnet_DOE_nhead%d_dm%d_nl%d_nhid%d' %\
     (nhead, dmodel, nlayers, nhid)
+  # kwargs['remark'] = 'CO_Schedular_DOE_nhead%d_dm%d_nl%d_nhid%d' %\
+  #   (nhead, dmodel, nlayers, nhid)
   generate_tag(kwargs)
   kwargs.setdefault('log_level', 0)
   kwargs.setdefault('num_o', 4)
@@ -145,15 +154,16 @@ def doe_continuous(**kwargs):
       nhid=nhid,
       dropout=0.2)
   config.optimizer_fn = lambda params: torch.optim.Adam(params, 3e-4, eps=1e-5)
-  config.beta_reg = 0.01
-  config.discount = 0.99
-  config.use_gae = True
-  config.gae_tau = 0.95
+  config.discount = discount
+  config.use_gae = use_gae
+  config.gae_tau = gae_tau
+  config.ppo_ratio_clip_option_max = ppo_ratio_clip_option_max
+  config.ppo_ratio_clip_option_min = ppo_ratio_clip_option_min
   config.gradient_clip = 0.5
   config.rollout_length = 2048
   config.optimization_epochs = 10
   config.mini_batch_size = 64
-  config.ppo_ratio_clip = 0.2
+  config.ppo_ratio_clip_action = 0.2
   config.log_interval = config.rollout_length * config.num_workers
   config.state_normalizer = MeanStdNormalizer()
 
@@ -165,7 +175,7 @@ random_seed(1024)
 set_one_thread()
 select_device(-1)
 game = 'HalfCheetah-v2'
-run = 4
+run = 0
 tasks = False
 num_workers = 4
 gate = nn.Tanh()
@@ -183,5 +193,5 @@ kwargs = dict(
     gate=gate,
     num_workers=num_workers)
 doe_continuous(**kwargs)
-ppoc_continuous(**kwargs)
-oc_continuous(**kwargs)
+# ppoc_continuous(**kwargs)
+# oc_continuous(**kwargs)
