@@ -117,7 +117,7 @@ def doe_continuous(**kwargs):
   dmodel = 100
   nlayers = 3
   nhid = 50
-  kwargs['remark'] = 'ShareVnet_DOE_nhead%d_dm%d_nl%d_nhid%d' %\
+  kwargs['remark'] = 'ODetached_DOE_nhead%d_dm%d_nl%d_nhid%d' %\
     (nhead, dmodel, nlayers, nhid)
   # kwargs['remark'] = 'CO_Schedular_DOE_nhead%d_dm%d_nl%d_nhid%d' %\
   #   (nhead, dmodel, nlayers, nhid)
@@ -176,7 +176,7 @@ random_seed(1024)
 set_one_thread()
 select_device(-1)
 game = 'HalfCheetah-v2'
-run = 4
+run = 2
 tasks = False
 num_workers = 4
 gate = nn.Tanh()

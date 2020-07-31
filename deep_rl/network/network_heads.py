@@ -524,7 +524,7 @@ class DoeContiOneOptionNet(BaseNet):
 
     # decoder inputs
     # vt_1: v_{t-1} [1, num_workers, dmodel(embedding size in init)]
-    vt_1 = self.embed_option(prev_options.t())
+    vt_1 = self.embed_option(prev_options.t()).detach()
     # obs_cat_1: \tilde{S}_{t-1} [1, num_workers, state_dim + dmodel]
     obs_cat_1 = torch.cat([obs.unsqueeze(0), vt_1], dim=-1)
     obs_cat_1 = self.de_concat_norm(obs_cat_1)
@@ -548,7 +548,7 @@ class DoeContiOneOptionNet(BaseNet):
 
     ## beginning of actions part
     # vt: v_t [1, num_workers, dmodel(embedding size in init)]
-    vt = self.embed_option(ot.unsqueeze(0))
+    vt = self.embed_option(ot.unsqueeze(0)).detach()
     # obs_cat: [1, num_workers, state_dim + dmodel(embedding size in init)]
     obs_cat = torch.cat([obs.unsqueeze(0), vt], dim=-1)
     # obs_hat: \tilde{S}_t [1, num_workers, dmodel]
