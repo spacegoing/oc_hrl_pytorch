@@ -1,3 +1,41 @@
+# Implementation Ideas #
+
+## Config Options ##
+
+- how to name / record configurations
+
+## Log ##
+
+- log value
+- log option
+
+## Opt ##
+
+### Gradients ###
+
+- is Qos - Qos_1 correct?
+- ppo clip ratio small -> large
+- ppo option adv use vst not qost
+
+### Option Nets ###
+
+- better option learning?
+- whether use entropy
+
+### Action Nets ###
+
+- Action net use self attention (transformer encoder)
+- Rather than num_option action nets, use 1 action net with
+  different option embedding inputs
+
+### Value Functions ###
+
+- action, option have different value functions
+- value function use transformer encoding
+
+
+# Origin Readme #
+
 This branch is the code for the paper
 
 *DAC: The Double Actor-Critic Architecture for Learning Options* \
