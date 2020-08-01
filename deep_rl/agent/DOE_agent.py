@@ -144,18 +144,24 @@ class DoeAgent(BaseAgent):
             1.0 + self.config.ppo_ratio_clip_action) * sampled_a_adv
         pat_loss = -torch.min(pat_obj, pat_obj_clipped).mean()
 
-        pot_log_prob_new = prediction['po_t_log'][batch_all_index,
-                                                  sampled_ot_old.squeeze(-1)]
-        pot_log_prob_old = sampled_po_t_log_prob_old[batch_all_index,
-                                                     sampled_ot_old.squeeze(-1)]
-        pot_ratio = (pot_log_prob_new - pot_log_prob_old).exp()
-        pot_obj = pot_ratio * sampled_o_adv
-        option_clip_ratio = self._option_clip_schedular()
-        pot_obj_clipped = pot_ratio.clamp(
-            1.0 - option_clip_ratio, 1.0 + option_clip_ratio) * sampled_o_adv
-        pot_loss = -torch.min(pot_obj, pot_obj_clipped).mean()
         po_t_ent = -(prediction['po_t_log'] * prediction['po_t']).sum(-1).mean()
-        pot_loss = pot_loss - config.entropy_weight * po_t_ent
+        if config.ppo_opt_loss:
+          pot_log_prob_new = prediction['po_t_log'][batch_all_index,
+                                                    sampled_ot_old.squeeze(-1)]
+          pot_log_prob_old = sampled_po_t_log_prob_old[
+              batch_all_index, sampled_ot_old.squeeze(-1)]
+          pot_ratio = (pot_log_prob_new - pot_log_prob_old).exp()
+          pot_obj = pot_ratio * sampled_o_adv
+          option_clip_ratio = self._option_clip_schedular()
+          pot_obj_clipped = pot_ratio.clamp(
+              1.0 - option_clip_ratio, 1.0 + option_clip_ratio) * sampled_o_adv
+          pot_loss = -torch.min(pot_obj, pot_obj_clipped).mean()
+          pot_loss = pot_loss - config.entropy_weight * po_t_ent
+        else:
+          pot_loss = -(
+            prediction['po_t_log'
+                       ].gather(1, sampled_ot_old) * sampled_a_adv).mean()\
+                          - config.entropy_weight * po_t_ent
 
         q_loss = (prediction['q_o_st'].gather(1, sampled_ot_old) -
                   sampled_a_ret).pow(2).mul(0.5).mean()

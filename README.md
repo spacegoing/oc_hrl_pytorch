@@ -13,10 +13,14 @@
 
 ### Gradients ###
 
-- is Qos - Qos_1 correct?
 - ppo clip ratio small -> large
-- ppo option adv use vst not qost
 - rollout length short -> long
+
+#### Done ####
+- is Qos - Qos_1 correct?
+  - use pot*Q_o_st to compute V(Ot|St,Ot-1)
+- ppo option adv use vst not qost
+  - use o_adv for ppo loss
 
 ### Option Nets ###
 
