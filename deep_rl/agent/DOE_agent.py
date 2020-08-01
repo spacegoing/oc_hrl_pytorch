@@ -271,9 +271,15 @@ class DoeAgent(BaseAgent):
       storage.placeholder()
 
       if config.log_analyze_stat and self.total_steps % (config.max_steps //
-                                                         10):
+                                                         100):
+        try:
+          with open('./analyze/%s.pkl' % (config.log_file_apdx), 'rb') as f:
+            old_logallsteps_storage = pickle.load(f)
+        except FileNotFoundError:
+          old_logallsteps_storage = []
         with open('./analyze/%s.pkl' % (config.log_file_apdx), 'wb') as f:
-          pickle.dump(self.logallsteps_storage, f)
+          pickle.dump(old_logallsteps_storage + self.logallsteps_storage, f)
+        self.logallsteps_storage = []
 
   def step(self):
     config = self.config
