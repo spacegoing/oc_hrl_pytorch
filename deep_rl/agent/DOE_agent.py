@@ -157,11 +157,11 @@ class DoeAgent(BaseAgent):
         po_t_ent = -(prediction['po_t_log'] * prediction['po_t']).sum(-1).mean()
         pot_loss = pot_loss - config.entropy_weight * po_t_ent
 
-        # q_loss = (prediction['q_o_st'].gather(1, sampled_ot_old) -
-        #           sampled_a_ret).pow(2).mul(0.5).mean()
-        q_loss = (prediction['q_o_st'] *
-                  prediction['po_t'].sum(axis=1).unsqueeze(-1) -
-                  sampled_v_st).pow(2).mul(0.5).mean()
+        q_loss = (prediction['q_o_st'].gather(1, sampled_ot_old) -
+                  sampled_a_ret).pow(2).mul(0.5).mean()
+        # q_loss = (prediction['q_o_st'] *
+        #           prediction['po_t'].sum(axis=1).unsqueeze(-1) -
+        #           sampled_v_st).pow(2).mul(0.5).mean()
 
         self.opt.zero_grad()
         (pat_loss + q_loss + pot_loss).backward()
