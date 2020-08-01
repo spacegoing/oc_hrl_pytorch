@@ -75,7 +75,7 @@ def get_nw_ts_v_dict(tsbd_be_end_ts, key_ts_nw_v_dict, keys):
     k_list = []
     for (be, end) in bch_be_end_ts:
       k_list.append(ts_nw_v[be:end + 1])
-      k_list.append(np.full((pad_len, *ts_nw_v.shape[1:]), -2))
+      k_list.append(np.full((pad_len, *ts_nw_v.shape[1:]), -1))
     cat_mat = np.concatenate(k_list, axis=0)
     # [S,W,E] -> [W,S,E]
     cat_mat = cat_mat.transpose(1, 0, 2)
@@ -94,8 +94,16 @@ def plot_key_figure(nw_ts_v_dict, key, key_settings=None, plt_settings=None):
   def ot_plot_fn(value_mat, plt_settings):
     plt.figure()
     ax = plt.axes()
-    sns.heatmap(value_mat, cmap=plt_settings['cmap'])
     ax.set_title(plt_settings['title'])
+    sns.heatmap(value_mat, cmap=plt_settings['cmap'])
+
+    cats = np.unique(value_mat)
+    n_cat = cats.shape[0]
+    colorbar = ax.collections[0].colorbar
+    r = colorbar.vmax - colorbar.vmin
+    colorbar.set_ticks(
+        [colorbar.vmin + r / n_cat * (0.5 + i) for i in range(n_cat)])
+    colorbar.set_ticklabels([str(i) for i in cats])
 
   key_fn = {'ot': [ot_value_fn, ot_plot_fn]}
   if key in key_fn:
@@ -109,7 +117,7 @@ def plot_file(nm, tsbd_be_end_ts, keys, plot_keys):
   nw_ts_v_dict, padded_nw_ts_v_dict, pad_len = get_nw_ts_v_dict(
       tsbd_be_end_ts, key_ts_nw_v_dict, keys)
 
-  ot_cmap = ["255", "#9b59b6", "#3498db", "#95a5a6", "#e74c3c"]
+  ot_cmap = ["1", "#2ecc71", "#3498db", "255", "#e74c3c"]
   plt_settings_dict = {
       'ot': {
           'title': nm,
@@ -126,47 +134,60 @@ if __name__ == "__main__":
   # list to dict of np array
   keys = ['s', 'r', 'm', 'at', 'ot', 'pot_ent', 'q_ot_st']
 
-  ## initial run git:1e48131
-  # performance up->down
-  # best
-  nm = 'HalfCheetah-v2-gate_Tanh()-num_workers_4-remark_ShareVnet_DOE_nhead4_dm100_nl3_nhid50-tasks_False-run-4-200731-172620'
-  tsbd_be_end_ts = [[570000, 630000], [628000, 652000], [904000, 972000]]
+  ## ebcba61 OptPPO use PPO adv for options
+  # best 1,2
+  tsbd_be_end_ts = [[860000, 984000], [1016000, 1124000], [1848000, 2000000]]
+  nm = 'HalfCheetah-v2-gate_Tanh()-num_workers_4-remark_OptPPO_DOE_nhead4_dm100_nl3_nhid50-tasks_False-run-13-200801-012038.pkl'
   plot_file(nm, tsbd_be_end_ts, keys, plot_keys=keys)
-  plt.show()
-  # worst
-  nm = 'HalfCheetah-v2-gate_Tanh()-num_workers_4-remark_ShareVnet_DOE_nhead4_dm100_nl3_nhid50-tasks_False-run-4-200731-172622'
-  tsbd_be_end_ts = [[524000, 556000], [964000, 996000]]
+  nm = 'HalfCheetah-v2-gate_Tanh()-num_workers_4-remark_OptPPO_DOE_nhead4_dm100_nl3_nhid50-tasks_False-run-13-200801-012043.pkl'
   plot_file(nm, tsbd_be_end_ts, keys, plot_keys=keys)
-  plt.show()
-
-  # compare best, mid, worst
-  tsbd_be_end_ts = [[1004000, 1084000], [1212000, 1280000]]
-  # best
-  nm = 'HalfCheetah-v2-gate_Tanh()-num_workers_4-remark_ShareVnet_DOE_nhead4_dm100_nl3_nhid50-tasks_False-run-4-200731-172620'
+  # worst 3,4
+  nm = 'HalfCheetah-v2-gate_Tanh()-num_workers_4-remark_OptPPO_DOE_nhead4_dm100_nl3_nhid50-tasks_False-run-13-200801-012045.pkl'
   plot_file(nm, tsbd_be_end_ts, keys, plot_keys=keys)
-  plt.show()
-  # mid
-  nm = 'HalfCheetah-v2-gate_Tanh()-num_workers_4-remark_ShareVnet_DOE_nhead4_dm100_nl3_nhid50-tasks_False-run-4-200731-172618'
-  plot_file(nm, tsbd_be_end_ts, keys, plot_keys=keys)
-  plt.show()
-  nm = 'HalfCheetah-v2-gate_Tanh()-num_workers_4-remark_ShareVnet_DOE_nhead4_dm100_nl3_nhid50-tasks_False-run-4-200731-172624'
-  plot_file(nm, tsbd_be_end_ts, keys, plot_keys=keys)
-  plt.show()
-  # worst
-  nm = 'HalfCheetah-v2-gate_Tanh()-num_workers_4-remark_ShareVnet_DOE_nhead4_dm100_nl3_nhid50-tasks_False-run-4-200731-172622'
+  nm = 'HalfCheetah-v2-gate_Tanh()-num_workers_4-remark_OptPPO_DOE_nhead4_dm100_nl3_nhid50-tasks_False-run-13-200801-012043.pkl'
   plot_file(nm, tsbd_be_end_ts, keys, plot_keys=keys)
   plt.show()
 
+  def initial_run():
+    ## initial run git:1e48131
+    # performance up->down
+    # best
+    nm = 'HalfCheetah-v2-gate_Tanh()-num_workers_4-remark_ShareVnet_DOE_nhead4_dm100_nl3_nhid50-tasks_False-run-4-200731-172620'
+    tsbd_be_end_ts = [[570000, 630000], [628000, 652000], [904000, 972000]]
+    plot_file(nm, tsbd_be_end_ts, keys, plot_keys=keys)
+    plt.show()
+    # worst
+    nm = 'HalfCheetah-v2-gate_Tanh()-num_workers_4-remark_ShareVnet_DOE_nhead4_dm100_nl3_nhid50-tasks_False-run-4-200731-172622'
+    tsbd_be_end_ts = [[524000, 556000], [964000, 996000]]
+    plot_file(nm, tsbd_be_end_ts, keys, plot_keys=keys)
+    plt.show()
 
+    # compare best, mid, worst
+    tsbd_be_end_ts = [[1004000, 1084000], [1212000, 1280000]]
+    # best
+    nm = 'HalfCheetah-v2-gate_Tanh()-num_workers_4-remark_ShareVnet_DOE_nhead4_dm100_nl3_nhid50-tasks_False-run-4-200731-172620'
+    plot_file(nm, tsbd_be_end_ts, keys, plot_keys=keys)
+    plt.show()
+    # mid
+    nm = 'HalfCheetah-v2-gate_Tanh()-num_workers_4-remark_ShareVnet_DOE_nhead4_dm100_nl3_nhid50-tasks_False-run-4-200731-172618'
+    plot_file(nm, tsbd_be_end_ts, keys, plot_keys=keys)
+    plt.show()
+    nm = 'HalfCheetah-v2-gate_Tanh()-num_workers_4-remark_ShareVnet_DOE_nhead4_dm100_nl3_nhid50-tasks_False-run-4-200731-172624'
+    plot_file(nm, tsbd_be_end_ts, keys, plot_keys=keys)
+    plt.show()
+    # worst
+    nm = 'HalfCheetah-v2-gate_Tanh()-num_workers_4-remark_ShareVnet_DOE_nhead4_dm100_nl3_nhid50-tasks_False-run-4-200731-172622'
+    plot_file(nm, tsbd_be_end_ts, keys, plot_keys=keys)
+    plt.show()
 
-# def get_padded_ts_array(tsbd_be_end_ts, pad_len):
-#   bch_be_end_ts = tsbd_ts_bch_step(tsbd_be_end_ts)
-#   pad_len = 100
-#   be = 10
-#   ts_padded_array = []
-#   for (b, e) in bch_be_end_ts:
-#     length = e - b + 1
-#     ts_padded_array.append(np.arange(be, be + length))
-#     be += length + pad_len
-#   ts_padded_array = np.concatenate(ts_padded_array, axis=0)
-#   return ts_padded_array
+  # def get_padded_ts_array(tsbd_be_end_ts, pad_len):
+  #   bch_be_end_ts = tsbd_ts_bch_step(tsbd_be_end_ts)
+  #   pad_len = 100
+  #   be = 10
+  #   ts_padded_array = []
+  #   for (b, e) in bch_be_end_ts:
+  #     length = e - b + 1
+  #     ts_padded_array.append(np.arange(be, be + length))
+  #     be += length + pad_len
+  #   ts_padded_array = np.concatenate(ts_padded_array, axis=0)
+  #   return ts_padded_array
