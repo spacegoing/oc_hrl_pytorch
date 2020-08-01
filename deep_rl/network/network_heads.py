@@ -481,6 +481,7 @@ class DoeContiOneOptionNet(BaseNet):
 
     ## Critic Nets
     self.q_o_st = DoeCriticNet(state_dim + dmodel, num_options)
+    self.vfn_obs_norm = nn.LayerNorm(state_dim + dmodel)
 
     self.num_options = num_options
     self.action_dim = action_dim
@@ -567,6 +568,12 @@ class DoeContiOneOptionNet(BaseNet):
         pat_mean[mask] = pat_o['mean']
         pat_std[mask] = pat_o['std']
 
+    ## beginning of value fn
+    # po_t_logits: v_t [1, num_workers, dmodel(embedding size in init)]
+    # obs_cat: [1, num_workers, state_dim + dmodel(embedding size in init)]
+    obs_cat = torch.cat([obs.unsqueeze(0), dt], dim=-1)
+    # obs_hat: \tilde{S}_t [1, num_workers, dmodel]
+    obs_hat = self.vfn_obs_norm(obs_cat)
     q_o_st = self.q_o_st(obs_hat.squeeze(0))
 
     return {
