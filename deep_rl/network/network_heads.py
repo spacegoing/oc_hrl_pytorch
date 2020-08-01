@@ -463,11 +463,12 @@ class DoeContiOneOptionNet(BaseNet):
     self.embed_option = nn.Embedding(num_options, dmodel)
     ## decoder
     # norm state, option concatenation
-    self.de_concat_norm = nn.LayerNorm(state_dim + dmodel)
-    # todo: should use option embed vector (encoder embedding)
-    # or embed_option embedding (separate decoder embedding)?
-    # map state, option concatenation -> dmodel
-    self.de_so_lc = layer_init(nn.Linear(state_dim + dmodel, dmodel))
+    # map state -> dmodel//2
+    de_state_dim = dmodel // 2
+    de_ot_1_dim = dmodel - de_state_dim
+    self.de_state_lc = layer_init(nn.Linear(state_dim, de_state_dim))
+    self.de_embed_lc = layer_init(nn.Linear(dmodel, de_ot_1_dim))
+    self.de_concat_norm = nn.LayerNorm(dmodel)
     self.de_logtis_lc = layer_init(nn.Linear(dmodel, num_options))
 
     self.doe = nn.Transformer(dmodel, nhead, nlayers, nlayers, nhid, dropout)
@@ -527,10 +528,11 @@ class DoeContiOneOptionNet(BaseNet):
     # vt_1: v_{t-1} [1, num_workers, dmodel(embedding size in init)]
     vt_1 = self.embed_option(prev_options.t()).detach()
     # obs_cat_1: \tilde{S}_{t-1} [1, num_workers, state_dim + dmodel]
-    obs_cat_1 = torch.cat([obs.unsqueeze(0), vt_1], dim=-1)
-    obs_cat_1 = self.de_concat_norm(obs_cat_1)
+    obs_hat = self.de_state_lc(obs)
+    vt_1_hat = self.de_embed_lc(vt_1)
+    obs_cat_1 = torch.cat([obs_hat.unsqueeze(0), vt_1_hat], dim=-1)
     # obs_hat_1: \tilde{S}_{t-1} [1, num_workers, dmodel]
-    obs_hat_1 = self.de_so_lc(obs_cat_1)
+    obs_hat_1 = self.de_concat_norm(obs_cat_1)
 
     # transformer outputs
     # dt: [1, num_workers, dmodel]
