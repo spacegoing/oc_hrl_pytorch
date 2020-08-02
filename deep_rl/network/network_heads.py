@@ -472,6 +472,9 @@ class DoeContiOneOptionNet(BaseNet):
     self.de_logtis_lc = layer_init(nn.Linear(dmodel, num_options))
 
     self.doe = nn.Transformer(dmodel, nhead, nlayers, nlayers, nhid, dropout)
+    for p in self.doe.parameters():
+      if p.dim() > 1:
+        nn.init.xavier_uniform_(p)
 
     ## Primary Action
     act_state_dim = dmodel // 2
