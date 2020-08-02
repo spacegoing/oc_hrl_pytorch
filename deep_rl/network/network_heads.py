@@ -474,14 +474,21 @@ class DoeContiOneOptionNet(BaseNet):
     self.doe = nn.Transformer(dmodel, nhead, nlayers, nlayers, nhid, dropout)
 
     ## Primary Action
-    self.action_nets = nn.ModuleList([
-        DoeContiActionNet(state_dim + dmodel, action_dim)
-        for _ in range(num_options)
-    ])
-    self.act_obs_norm = nn.LayerNorm(state_dim + dmodel)
+    act_state_dim = dmodel // 2
+    act_ot_dim = dmodel - act_state_dim
+    self.act_state_lc = layer_init(nn.Linear(state_dim, act_state_dim))
+    self.act_embed_lc = layer_init(nn.Linear(dmodel, act_ot_dim))
+    self.act_concat_norm = nn.LayerNorm(dmodel)
+    self.action_nets = nn.ModuleList(
+        [DoeContiActionNet(dmodel, action_dim) for _ in range(num_options)])
 
     ## Critic Nets
-    self.q_o_st = DoeCriticNet(state_dim + dmodel, num_options)
+    q_state_dim = dmodel // 2
+    q_ot_dim = dmodel - q_state_dim
+    self.q_state_lc = layer_init(nn.Linear(state_dim, q_state_dim))
+    self.q_embed_lc = layer_init(nn.Linear(dmodel, q_ot_dim))
+    self.q_concat_norm = nn.LayerNorm(dmodel)
+    self.q_o_st = DoeCriticNet(dmodel, num_options)
     self.vfn_obs_norm = nn.LayerNorm(state_dim + dmodel)
 
     self.num_options = num_options
@@ -527,9 +534,9 @@ class DoeContiOneOptionNet(BaseNet):
     # decoder inputs
     # vt_1: v_{t-1} [1, num_workers, dmodel(embedding size in init)]
     vt_1 = self.embed_option(prev_options.t()).detach()
-    # obs_cat_1: \tilde{S}_{t-1} [1, num_workers, state_dim + dmodel]
     obs_hat = self.de_state_lc(obs)
     vt_1_hat = self.de_embed_lc(vt_1)
+    # obs_cat_1: \tilde{S}_{t-1} [1, num_workers, dmodel]
     obs_cat_1 = torch.cat([obs_hat.unsqueeze(0), vt_1_hat], dim=-1)
     # obs_hat_1: \tilde{S}_{t-1} [1, num_workers, dmodel]
     obs_hat_1 = self.de_concat_norm(obs_cat_1)
@@ -550,12 +557,14 @@ class DoeContiOneOptionNet(BaseNet):
     ot = po_t_dist.sample()
 
     ## beginning of actions part
+    obs_hat = self.act_state_lc(obs)
     # vt: v_t [1, num_workers, dmodel(embedding size in init)]
     vt = self.embed_option(ot.unsqueeze(0)).detach()
-    # obs_cat: [1, num_workers, state_dim + dmodel(embedding size in init)]
-    obs_cat = torch.cat([obs.unsqueeze(0), vt], dim=-1)
+    vt_hat = self.act_embed_lc(vt)
+    # obs_cat: [1, num_workers, dmodel(embedding size in init)]
+    obs_cat = torch.cat([obs_hat.unsqueeze(0), vt_hat], dim=-1)
     # obs_hat: \tilde{S}_t [1, num_workers, dmodel]
-    obs_hat = self.act_obs_norm(obs_cat)
+    obs_hat = self.act_concat_norm(obs_cat)
 
     # generate batch inputs for each option
     batch_idx = range_tensor(num_workers)
@@ -571,11 +580,12 @@ class DoeContiOneOptionNet(BaseNet):
         pat_std[mask] = pat_o['std']
 
     ## beginning of value fn
-    # po_t_logits: v_t [1, num_workers, dmodel(embedding size in init)]
-    # obs_cat: [1, num_workers, state_dim + dmodel(embedding size in init)]
-    obs_cat = torch.cat([obs.unsqueeze(0), dt], dim=-1)
+    obs_hat = self.q_state_lc(obs)
+    dt_hat = self.q_embed_lc(dt)
+    # obs_cat: [1, num_workers, dmodel(embedding size in init)]
+    obs_cat = torch.cat([obs_hat.unsqueeze(0), dt_hat], dim=-1)
     # obs_hat: \tilde{S}_t [1, num_workers, dmodel]
-    obs_hat = self.vfn_obs_norm(obs_cat)
+    obs_hat = self.q_concat_norm(obs_cat)
     q_o_st = self.q_o_st(obs_hat.squeeze(0))
 
     return {
