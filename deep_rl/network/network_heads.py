@@ -408,13 +408,36 @@ class DoeContiActionNet(BaseNet):
     self.std = nn.Parameter(torch.zeros((1, action_dim)))
 
   def forward(self, phi):
-    mean = F.tanh(self.fc_pi(phi))
+    mean = torch.tanh(self.fc_pi(phi))
     std = F.softplus(self.std).expand(mean.size(0), -1)
 
     return {
         'mean': mean,
         'std': std,
     }
+
+
+class DoeSingleTransActionNet(BaseNet):
+
+  def __init__(self, dmodel, nhead, nlayers, nhid, dropout, action_dim):
+    super().__init__()
+    encoder_layers = nn.TransformerEncoderLayer(dmodel, nhead, nhid, dropout)
+    encoder_norm = nn.LayerNorm(dmodel)
+    self.transformer_encoder = nn.TransformerEncoder(encoder_layers, nlayers,
+                                                     encoder_norm)
+    for p in self.transformer_encoder.parameters():
+      if p.dim() > 1:
+        nn.init.xavier_uniform_(p)
+    self.mean_fc = layer_init(nn.Linear(dmodel, action_dim), 1e-3)
+    self.std_fc = layer_init(nn.Linear(dmodel, action_dim), 1e-3)
+
+  def forward(self, obs):
+    # obs: [1, num_workers, dmodel]
+    # out: [num_workers, dmodel]
+    out = self.transformer_encoder(obs).squeeze(0)
+    mean = torch.tanh(self.mean_fc(out))
+    std = F.softplus(self.std_fc(out))
+    return mean, std
 
 
 class DoeCriticNet(BaseNet):
@@ -448,7 +471,8 @@ class DoeContiOneOptionNet(BaseNet):
                dmodel=40,
                nlayers=3,
                nhid=50,
-               dropout=0.2):
+               dropout=0.2,
+               config=None):
     '''
     nhead: number of heads for multiheadattention
     dmodel: embedding size & transormer input size (both decoder & encoder)
@@ -482,8 +506,13 @@ class DoeContiOneOptionNet(BaseNet):
     self.act_state_lc = layer_init(nn.Linear(state_dim, act_state_dim))
     self.act_embed_lc = layer_init(nn.Linear(dmodel, act_ot_dim))
     self.act_concat_norm = nn.LayerNorm(dmodel)
-    self.action_nets = nn.ModuleList(
-        [DoeContiActionNet(dmodel, action_dim) for _ in range(num_options)])
+    self.single_transformer_action_net = config.single_transformer_action_net
+    if self.single_transformer_action_net:
+      self.act_doe = DoeSingleTransActionNet(dmodel, nhead, nlayers, nhid,
+                                             dropout, action_dim)
+    else:
+      self.action_nets = nn.ModuleList(
+          [DoeContiActionNet(dmodel, action_dim) for _ in range(num_options)])
 
     ## Critic Nets
     q_state_dim = dmodel // 2
@@ -568,7 +597,10 @@ class DoeContiOneOptionNet(BaseNet):
     ## beginning of actions part
     obs_hat = self.act_state_lc(obs)
     # vt: v_t [1, num_workers, dmodel(embedding size in init)]
-    vt = self.embed_option(ot.unsqueeze(0)).detach()
+    if self.single_transformer_action_net:
+      vt = self.embed_option(ot.unsqueeze(0))
+    else:
+      vt = self.embed_option(ot.unsqueeze(0)).detach()
     vt_hat = self.act_embed_lc(vt)
     # obs_cat: [1, num_workers, dmodel(embedding size in init)]
     obs_cat = torch.cat([obs_hat.unsqueeze(0), vt_hat], dim=-1)
@@ -576,17 +608,20 @@ class DoeContiOneOptionNet(BaseNet):
     obs_hat = self.act_concat_norm(obs_cat)
 
     # generate batch inputs for each option
-    batch_idx = range_tensor(num_workers)
-    # pat_mean/pat_std: [num_workers, act_dim]
-    pat_mean = tensor(np.zeros([num_workers, self.action_dim]))
-    pat_std = tensor(np.zeros([num_workers, self.action_dim]))
-    for o in range(self.num_options):
-      mask = ot == o
-      if mask.any():
-        obs_hat_o = obs_hat.squeeze(0)[mask, :]
-        pat_o = self.action_nets[o](obs_hat_o)
-        pat_mean[mask] = pat_o['mean']
-        pat_std[mask] = pat_o['std']
+    if self.single_transformer_action_net:
+      pat_mean, pat_std = self.act_doe(obs_hat)
+    else:
+      batch_idx = range_tensor(num_workers)
+      # pat_mean/pat_std: [num_workers, act_dim]
+      pat_mean = tensor(np.zeros([num_workers, self.action_dim]))
+      pat_std = tensor(np.zeros([num_workers, self.action_dim]))
+      for o in range(self.num_options):
+        mask = ot == o
+        if mask.any():
+          obs_hat_o = obs_hat.squeeze(0)[mask, :]
+          pat_o = self.action_nets[o](obs_hat_o)
+          pat_mean[mask] = pat_o['mean']
+          pat_std[mask] = pat_o['std']
 
     ## beginning of value fn
     obs_hat = self.q_state_lc(obs)

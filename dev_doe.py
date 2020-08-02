@@ -113,14 +113,15 @@ def doe_continuous(**kwargs):
   ppo_ratio_clip_option_max = 0.2
   ppo_ratio_clip_option_min = 0.2
   ppo_opt_loss = True
+  single_transformer_action_net = True
   # kwargs['remark'] = 'CO_Schedular_r%.2f_UseGae%s_L%.2f_' %\
   #   (discount, str(use_gae), gae_tau)
   nhead = 4
   dmodel = 100
   nlayers = 3
   nhid = 50
-  kwargs['remark'] = 'EvenAll_SepPPO_Shuffle_DOE_nhead%d_dm%d_nl%d_nhid%d' %\
-    (nhead, dmodel, nlayers, nhid)
+  kwargs['remark'] = 'Ta%s_EvenAll_SepPPO_Shuffle_DOE_nhead%d_dm%d_nl%d_nhid%d' %\
+    (single_transformer_action_net, nhead, dmodel, nlayers, nhid)
   # kwargs['remark'] = 'CO_Schedular_DOE_nhead%d_dm%d_nl%d_nhid%d' %\
   #   (nhead, dmodel, nlayers, nhid)
   generate_tag(kwargs)
@@ -135,6 +136,7 @@ def doe_continuous(**kwargs):
   config.log_analyze_stat = True
   config.ppo_opt_loss = ppo_opt_loss
   config.shuffle_train = shuffle_train
+  config.single_transformer_action_net = single_transformer_action_net
 
   if config.tasks:
     set_tasks(config)
@@ -157,7 +159,8 @@ def doe_continuous(**kwargs):
       dmodel=dmodel,
       nlayers=nlayers,
       nhid=nhid,
-      dropout=0.2)
+      dropout=0.2,
+      config=config)
   config.optimizer_fn = lambda params: torch.optim.Adam(params, 3e-4, eps=1e-5)
   config.discount = discount
   config.use_gae = use_gae
