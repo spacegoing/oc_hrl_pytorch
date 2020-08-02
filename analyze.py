@@ -146,6 +146,13 @@ if __name__ == "__main__":
   plot_file(nm, tsbd_be_end_ts, keys, plot_keys=keys)
   nm = 'HalfCheetah-v2-gate_Tanh()-num_workers_4-remark_OptPPO_DOE_nhead4_dm100_nl3_nhid50-tasks_False-run-13-200801-012043.pkl'
   plot_file(nm, tsbd_be_end_ts, keys, plot_keys=keys)
+
+  ## c21ad7b Qbody QotLoss
+  tsbd_be_end_ts = [[1348000, 1472000]]
+  nm = 'HalfCheetah-v2-gate_Tanh()-num_workers_4-remark_Qbody_QotLoss_DOE_nhead4_dm100_nl3_nhid50-tasks_False-run-13-200801-114225.pkl'
+  plot_file(nm, tsbd_be_end_ts, keys, plot_keys=keys)
+  nm = 'HalfCheetah-v2-gate_Tanh()-num_workers_4-remark_Qbody_DOE_nhead4_dm100_nl3_nhid50-tasks_False-run-13-200801-113910.pkl'
+  plot_file(nm, tsbd_be_end_ts, keys, plot_keys=keys)
   plt.show()
 
   def initial_run():

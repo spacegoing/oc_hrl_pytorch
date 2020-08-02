@@ -22,11 +22,9 @@ class DoeAgent(BaseAgent):
     self.opt = config.optimizer_fn(self.network.parameters())
     self.total_steps = 0
 
-    self.worker_index = tensor(np.arange(config.num_workers)).long()
     self.states = self.task.reset()
     self.states = config.state_normalizer(self.states)
-    self.is_initial_states = tensor(np.ones((config.num_workers))).byte()
-    self.prev_options = tensor(np.zeros(config.num_workers)).long()
+    self.prev_options = tensor(np.zeros([config.num_workers, 1])).long()
 
     self.count = 0
 
@@ -41,62 +39,59 @@ class DoeAgent(BaseAgent):
   def compute_adv(self, storage):
     config = self.config
 
-    q_o_st = storage.q_o_st
-    po_t = storage.po_t
-    o_adv = storage.o_adv
-    all_v_st = storage.v_st
+    def ppo_advantages(v_st, adv_list, ret_list):
+      '''
+      v_st: list[rollout_length+1] each entry: [num_workers, 1]
+      adv_list: empty list filled with None len=rollout_length+1
+      ret_list: empty list filled with None len=rollout_length+1
+      '''
+      with torch.no_grad():
+        # ret: [num_workers, 1]
+        #   (current actual reward R_t) + (estimated all following rewards)
+        #   R_t + \sum^N\gamma^n V(S_t+n)
+        ret = v_st[-1]
+        # adv: [num_workers, 1]
+        adv = tensor(np.zeros((config.num_workers, 1)))
+        for i in reversed(range(config.rollout_length)):
+          # m: [num_workers, 1]
+          ret = storage.r[i] + config.discount * storage.m[i] * ret
+          if not config.use_gae:
+            adv = ret - v_st[i]
+          else:
+            # td_error: [num_workers, 1]
+            a_td_error = storage.r[i] +\
+              config.discount * storage.m[i] * v_st[i+1] - v_st[i]
+            adv = adv * config.gae_tau * config.discount *\
+              storage.m[i] + a_td_error
+          adv_list[i] = adv
+          ret_list[i] = ret
 
-    def get_v_st(q_o_st, po_t):
-      return (q_o_st * po_t).sum(axis=1).unsqueeze(-1)
+    v_st = storage.v_st
+    o_adv_list = storage.o_adv
+    o_ret_list = storage.o_ret
+    ppo_advantages(v_st, o_adv_list, o_ret_list)
 
-    q_ot_st = storage.q_ot_st
-    a_adv = storage.a_adv
-    all_a_ret = storage.a_ret
-
-    with torch.no_grad():
-      # v_st: [num_workers, 1]
-      # q_o_st[-1]/po_t[-1]: [num_workers, num_options]
-      v_st = get_v_st(q_o_st[-1], po_t[-1])
-      # o_A: [num_workers, 1]
-      o_A = tensor(np.zeros((config.num_workers, 1)))
-      # a_ret: [num_workers, 1]
-      a_ret = q_ot_st[-1]
-      # a_A: [num_workers, 1]
-      a_A = tensor(np.zeros((config.num_workers, 1)))
-      for i in reversed(range(config.rollout_length)):
-        # m: [num_workers, 1]
-        v_st = storage.r[i] + config.discount * storage.m[i] * v_st
-        a_ret = storage.r[i] + config.discount * storage.m[i] * a_ret
-        if not config.use_gae:
-          a_A = a_ret - q_ot_st[i]
-          o_A = v_st - get_v_st(q_o_st[i], po_t[i])
-        else:
-          # td_error: [num_workers, 1]
-          o_td_error = storage.r[i] + (config.discount * storage.m[i] *
-                                       get_v_st(q_o_st[i + 1], po_t[i + 1])
-                                      ) - get_v_st(q_o_st[i], po_t[i])
-          o_A = o_A * config.gae_tau * config.discount *\
-            storage.m[i] + o_td_error
-          a_td_error = storage.r[i] +\
-            config.discount * storage.m[i] * q_ot_st[i+1] - q_ot_st[i]
-          a_A = a_A * config.gae_tau * config.discount *\
-            storage.m[i] + a_td_error
-        o_adv[i] = o_A
-        all_v_st[i] = v_st
-        a_adv[i] = a_A
-        all_a_ret[i] = a_ret
+    q_ot_st = storage.q_ot_st  # Q(O_t,S_t) = marg_a Q(a,O,S)
+    a_adv_list = storage.a_adv
+    a_ret_list = storage.a_ret
+    ppo_advantages(q_ot_st, a_adv_list, a_ret_list)
 
   def learn(self, storage):
     config = self.config
 
-    states, at_old, pat_log_prob_old, ot_old, po_t_log_prob_old, \
-      v_st, o_adv, a_ret, a_adv, prev_options = storage.cat(
+    states, at_old, pat_log_prob_old, ot_old, po_t_log_prob_old,\
+      o_ret, o_adv, a_ret, a_adv, prev_options = storage.cat(
         ['s', 'at', 'pat_log_prob', 'ot', 'po_t_log', \
-         'v_st', 'o_adv', 'a_ret', 'a_adv', 'prev_o'])
+         'o_ret', 'o_adv', 'a_ret', 'a_adv', 'prev_o'])
     a_adv = (a_adv - a_adv.mean()) / a_adv.std()
     o_adv = (o_adv - o_adv.mean()) / o_adv.std()
 
     def ppo_loss(p_log_new, p_log_old, adv, clip_rate):
+      '''
+      p_log_new: [num_workers, 1]
+      p_log_old: [num_workers, 1]
+      adv: [num_workers, 1]
+      '''
       p_ratio = (p_log_new - p_log_old).exp()
       p_obj = p_ratio * adv
       p_obj_clipped = p_ratio.clamp(1.0 - clip_rate, 1.0 + clip_rate) * adv
@@ -104,7 +99,7 @@ class DoeAgent(BaseAgent):
       return p_loss
 
     def learn_action(prediction, sampled_at_old, sampled_pat_log_prob_old,
-                     sampled_ot_old, sampled_a_adv, sampled_a_ret):
+                     sampled_a_adv, sampled_a_ret):
       # mean/std: [num_workers, action_dim]
       pat_mean = prediction['pat_mean']
       pat_std = prediction['pat_std']
@@ -116,24 +111,20 @@ class DoeAgent(BaseAgent):
       pat_loss = ppo_loss(pat_log_prob_new, sampled_pat_log_prob_old,
                           sampled_a_adv, self.config.ppo_ratio_clip_action)
 
-      q_loss = (prediction['q_o_st'].gather(1, sampled_ot_old) -
-                sampled_a_ret).pow(2).mul(0.5).mean()
+      q_loss = (prediction['q_ot_st'] - sampled_a_ret).pow(2).mul(0.5).mean()
       return pat_loss + q_loss
 
     def learn_option(prediction, sampled_ot_old, sampled_po_t_log_prob_old,
-                     sampled_o_adv, sampled_v_st):
+                     sampled_o_adv, sampled_o_ret):
       po_t_ent = -(prediction['po_t_log'] * prediction['po_t']).sum(-1).mean()
-      pot_log_prob_new = prediction['po_t_log'][batch_all_index,
-                                                sampled_ot_old.squeeze(-1)]
-      pot_log_prob_old = sampled_po_t_log_prob_old[batch_all_index,
-                                                   sampled_ot_old.squeeze(-1)]
+      pot_log_prob_new = prediction['po_t_log'].gather(1, sampled_ot_old)
+      pot_log_prob_old = sampled_po_t_log_prob_old.gather(1, sampled_ot_old)
       option_clip_ratio = self._option_clip_schedular()
       pot_loss = ppo_loss(pot_log_prob_new, pot_log_prob_old, sampled_o_adv,
                           option_clip_ratio)
       pot_loss = pot_loss - config.entropy_weight * po_t_ent
 
-      q_loss = ((prediction['q_o_st'] * prediction['po_t']).sum(
-          axis=1).unsqueeze(-1) - sampled_v_st).pow(2).mul(0.5).mean()
+      q_loss = (prediction['v_st'] - sampled_o_ret).pow(2).mul(0.5).mean()
       return pot_loss + q_loss
 
     learn_fn_list = [[learn_option, 'o'], [learn_action, 'a']]
@@ -146,45 +137,41 @@ class DoeAgent(BaseAgent):
         for batch_indices in sampler:
           '''
           batch_size=mini_batch_size
-
           batch_indices: [batch_size]
-          sampled_states: [batch_size, state_dim]
-          sampled_actions: [batch_size, act_dim]
-          sampled_options: [batch_size, 1]
-          sampled_log_pi_bar_old: [batch_size, 1]
-          sampled_v_st: [batch_size, 1]
-          sampled_o_adv: [batch_size, 1]
-          sampled_a_ret: [batch_size, 1]
-          sampled_a_adv: [batch_size, 1]
-          sampled_inits: [batch_size, 1]
-          sampled_prev_options: [batch_size, 1]
+          states: [batch_size, state_dim]
+          at_old: [batch_size, act_dim]
+          pat_log_prob_old: [batch_size, 1]
+          ot_old: [batch_size, 1]
+          po_t_log_prob_old: [batch_size, num_options]
+          o_ret: [batch_size, 1]
+          o_adv: [batch_size, 1]
+          a_ret: [batch_size, 1]
+          a_adv: [batch_size, 1]
+          prev_options: [batch_size, 1]
           '''
           batch_indices = tensor(batch_indices).long()
-          batch_all_index = range_tensor(len(batch_indices))
           sampled_states = states[batch_indices]
           sampled_prev_options = prev_options[batch_indices]
-
           prediction = self.network(sampled_states, sampled_prev_options)
-          learn_params = {
-              'a':
-                  dict(
-                      prediction=prediction,
-                      sampled_at_old=at_old[batch_indices],
-                      sampled_pat_log_prob_old=pat_log_prob_old[batch_indices],
-                      sampled_ot_old=ot_old[batch_indices],
-                      sampled_a_adv=a_adv[batch_indices],
-                      sampled_a_ret=a_ret[batch_indices]),
-              'o':
-                  dict(
-                      prediction=prediction,
-                      sampled_ot_old=ot_old[batch_indices],
-                      sampled_po_t_log_prob_old=po_t_log_prob_old[
-                          batch_indices],
-                      sampled_o_adv=o_adv[batch_indices],
-                      sampled_v_st=v_st[batch_indices])
-          }
 
-          loss = learn_fn(**learn_params[name])
+          if name == 'a':
+            sampled_action_old = at_old[batch_indices]
+            sampled_log_prob_old = pat_log_prob_old[batch_indices]
+            sampled_adv = a_adv[batch_indices]
+            sampled_ret = a_ret[batch_indices]
+          if name == 'o':
+            sampled_action_old = ot_old[batch_indices]
+            sampled_log_prob_old = po_t_log_prob_old[batch_indices]
+            sampled_adv = o_adv[batch_indices]
+            sampled_ret = o_ret[batch_indices]
+
+          loss = learn_fn(
+              prediction,
+              sampled_action_old,
+              sampled_log_prob_old,
+              sampled_adv,
+              sampled_ret,
+          )
           self.opt.zero_grad()
           loss.backward()
           nn.utils.clip_grad_norm_(self.network.parameters(),
@@ -204,15 +191,7 @@ class DoeAgent(BaseAgent):
     '''
     with torch.no_grad():
       for _ in range(config.rollout_length):
-        prediction = self.network(states, self.prev_options.unsqueeze(1))
-        ot = prediction['ot']
-
-        self.logger.add_scalar('o_t', ot, log_level=5)
-        self.logger.add_scalar('o_t_0', ot[0], log_level=5)
-        self.logger.add_scalar(
-            'po_t_ent', prediction['po_t_dist'].entropy(), log_level=5)
-        self.logger.add_scalar(
-            'pot_log_prob', prediction['po_t_dist'].log_prob(ot), log_level=5)
+        prediction = self.network(states, self.prev_options)
 
         # mean/std: [num_workers, action_dim]
         pat_mean = prediction['pat_mean']
@@ -232,39 +211,26 @@ class DoeAgent(BaseAgent):
         # next_states: -> [num_workers, state_dim]
         next_states = config.state_normalizer(next_states)
 
-        # remove ot from prediction, added below due to requiring unsqueeze
-        prediction.pop('ot')
         storage.add(prediction)
         '''
-          r: [num_workers, 1]
-          m: [num_workers, 1]
-            0 for terminated states; 1 for continue
-          at: [num_workers, act_dim]
-          ot: [num_workers, 1]
-          prev_o: [num_workers, 1]
           s: [num_workers, state_dim]
-          init: [num_workers, 1]
-          q_ot_st: [num_workers, 1]
-          log_pi_bar: [num_workers, 1]
+          r: [num_workers, 1]
+          m: [num_workers, 1] termination mask
+            0 for terminated states; 1 for continue
+          prev_o: [num_workers, 1]
+          at: [num_workers, act_dim]
+          pat_log_prob: [num_workers, 1]
         '''
         storage.add({
+            's': tensor(states),
             'r': tensor(rewards).unsqueeze(-1),
             'm': tensor(1 - terminals).unsqueeze(-1),
+            'prev_o': self.prev_options,
             'at': at,
-            'ot': ot.unsqueeze(-1),
-            'prev_o': self.prev_options.unsqueeze(-1),
-            's': tensor(states),
-            'init': self.is_initial_states.unsqueeze(-1),
-            'q_ot_st': prediction['q_o_st'][self.worker_index, \
-                                             ot].unsqueeze(-1),
             'pat_log_prob': pat.add(1e-5).log(),
         })
 
-        # self.is_initial_states: [num_workers, 1]
-        #    0 for continue; 1 for terminated
-        self.is_initial_states = tensor(terminals).byte()
-        self.prev_options = ot
-
+        self.prev_options = prediction['ot']
         states = next_states
         self.total_steps += config.num_workers
 
@@ -275,21 +241,16 @@ class DoeAgent(BaseAgent):
               'r': np.expand_dims(rewards, axis=-1),
               'm': np.expand_dims(1 - terminals, axis=-1),
               'at': to_np(at),
-              'ot': to_np(ot.unsqueeze(-1)),
+              'ot': to_np(prediction['ot']),
               'pot_ent': to_np(prediction['po_t_dist'].entropy().unsqueeze(-1)),
-              'q_ot_st': to_np(prediction['q_o_st']),
+              'q_o_st': to_np(prediction['q_o_st']),
           })
 
       self.states = states
-      prediction = self.network(states, self.prev_options.unsqueeze(-1))
-      ot = prediction['ot']
-
-      prediction.pop('ot')
+      # add T+1 step
+      prediction = self.network(states, self.prev_options)
       storage.add(prediction)
-      # v: [num_workers, 1]
-      storage.add({
-          'q_ot_st': prediction['q_o_st'][self.worker_index, ot].unsqueeze(-1)
-      })
+      # padding storage
       storage.placeholder()
 
       if config.log_analyze_stat and self.total_steps % (config.max_steps //
@@ -306,7 +267,7 @@ class DoeAgent(BaseAgent):
   def step(self):
     config = self.config
     storage = Storage(config.rollout_length,
-                      ['a_adv', 'o_adv', 'a_ret', 'v_st'])
+                      ['a_adv', 'o_adv', 'a_ret', 'o_ret'])
     states = self.states
     self.rollout(storage, config, states)
     self.compute_adv(storage)

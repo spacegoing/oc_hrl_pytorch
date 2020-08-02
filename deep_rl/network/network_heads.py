@@ -516,8 +516,14 @@ class DoeContiOneOptionNet(BaseNet):
     Returns:
         po_t: [num_workers, num_options]
         po_t_log: [num_workers, num_options]
-        ot: [num_workers]
+        ot: [num_workers, 1]
+            However, ot as intermediate results in this
+            function are [num_workers]
+        po_t_dist: Categorical(probs: torch.Size([3, 4]))
         q_o_st: [num_workers, num_options]
+        q_ot_st: [num_workers, 1]
+        v_st: [num_workers, 1]
+              V(S_t,O_{t-1}) = \sum_{o\in \O_t} P(o|S_t,O_{t-1})Q(o,S_t)
         pat_mean: [num_workers, act_dim]
         pat_std: [num_workers, act_dim]
     '''
@@ -591,9 +597,11 @@ class DoeContiOneOptionNet(BaseNet):
     return {
         'po_t': po_t,
         'po_t_log': po_t_log,
-        'ot': ot,
+        'ot': ot.unsqueeze(-1),
         'po_t_dist': po_t_dist,
         'q_o_st': q_o_st,
+        'q_ot_st': q_o_st.gather(1, ot.unsqueeze(-1)),
+        'v_st': (q_o_st * po_t).sum(axis=1).unsqueeze(-1),
         'pat_mean': pat_mean,
         'pat_std': pat_std,
     }

@@ -109,8 +109,8 @@ def doe_continuous(**kwargs):
   discount = 0.99
   use_gae = True
   gae_tau = 0.95
-  ppo_ratio_clip_option_max = 0.4
-  shuffle_train = False
+  shuffle_train = True
+  ppo_ratio_clip_option_max = 0.2
   ppo_ratio_clip_option_min = 0.2
   ppo_opt_loss = True
   # kwargs['remark'] = 'CO_Schedular_r%.2f_UseGae%s_L%.2f_' %\
@@ -119,7 +119,7 @@ def doe_continuous(**kwargs):
   dmodel = 100
   nlayers = 3
   nhid = 50
-  kwargs['remark'] = 'ODetached_DOE_nhead%d_dm%d_nl%d_nhid%d' %\
+  kwargs['remark'] = 'EvenAll_SepPPO_Shuffle_DOE_nhead%d_dm%d_nl%d_nhid%d' %\
     (nhead, dmodel, nlayers, nhid)
   # kwargs['remark'] = 'CO_Schedular_DOE_nhead%d_dm%d_nl%d_nhid%d' %\
   #   (nhead, dmodel, nlayers, nhid)
@@ -176,11 +176,11 @@ def doe_continuous(**kwargs):
   run_steps(DoeAgent(config))
 
 
-random_seed(1024)
+random_seed()
 set_one_thread()
 select_device(-1)
 game = 'HalfCheetah-v2'
-run = 2
+run = 44
 tasks = False
 num_workers = 4
 gate = nn.Tanh()
