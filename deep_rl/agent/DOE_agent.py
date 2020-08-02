@@ -57,28 +57,28 @@ class DoeAgent(BaseAgent):
       # v_st: [num_workers, 1]
       # q_o_st[-1]/po_t[-1]: [num_workers, num_options]
       v_st = get_v_st(q_o_st[-1], po_t[-1])
+      # o_A: [num_workers, 1]
+      o_A = tensor(np.zeros((config.num_workers, 1)))
       # a_ret: [num_workers, 1]
       a_ret = q_ot_st[-1]
+      # a_A: [num_workers, 1]
+      a_A = tensor(np.zeros((config.num_workers, 1)))
       for i in reversed(range(config.rollout_length)):
         # m: [num_workers, 1]
         v_st = storage.r[i] + config.discount * storage.m[i] * v_st
         a_ret = storage.r[i] + config.discount * storage.m[i] * a_ret
         if not config.use_gae:
-          # a_A: [num_workers, 1]
           a_A = a_ret - q_ot_st[i]
-          # o_A: [num_workers, 1]
           o_A = v_st - get_v_st(q_o_st[i], po_t[i])
         else:
           # td_error: [num_workers, 1]
           o_td_error = storage.r[i] + (config.discount * storage.m[i] *
                                        get_v_st(q_o_st[i + 1], po_t[i + 1])
                                       ) - get_v_st(q_o_st[i], po_t[i])
-          # o_A: [num_workers, 1]
           o_A = o_A * config.gae_tau * config.discount *\
             storage.m[i] + o_td_error
           a_td_error = storage.r[i] +\
             config.discount * storage.m[i] * q_ot_st[i+1] - q_ot_st[i]
-          # a_A: [num_workers, 1]
           a_A = a_A * config.gae_tau * config.discount *\
             storage.m[i] + a_td_error
         o_adv[i] = o_A
