@@ -9,6 +9,7 @@ from ..component import *
 from .BaseAgent import *
 from skimage import color
 import pickle
+from random import shuffle
 
 
 class DoeAgent(BaseAgent):
@@ -56,28 +57,28 @@ class DoeAgent(BaseAgent):
       # v_st: [num_workers, 1]
       # q_o_st[-1]/po_t[-1]: [num_workers, num_options]
       v_st = get_v_st(q_o_st[-1], po_t[-1])
-      # o_A: [num_workers, 1]
-      o_A = tensor(np.zeros((config.num_workers, 1)))
       # a_ret: [num_workers, 1]
       a_ret = q_ot_st[-1]
-      # a_A: [num_workers, 1]
-      a_A = tensor(np.zeros((config.num_workers, 1)))
       for i in reversed(range(config.rollout_length)):
         # m: [num_workers, 1]
         v_st = storage.r[i] + config.discount * storage.m[i] * v_st
         a_ret = storage.r[i] + config.discount * storage.m[i] * a_ret
         if not config.use_gae:
+          # a_A: [num_workers, 1]
           a_A = a_ret - q_ot_st[i]
+          # o_A: [num_workers, 1]
           o_A = v_st - get_v_st(q_o_st[i], po_t[i])
         else:
           # td_error: [num_workers, 1]
           o_td_error = storage.r[i] + (config.discount * storage.m[i] *
                                        get_v_st(q_o_st[i + 1], po_t[i + 1])
                                       ) - get_v_st(q_o_st[i], po_t[i])
+          # o_A: [num_workers, 1]
           o_A = o_A * config.gae_tau * config.discount *\
             storage.m[i] + o_td_error
           a_td_error = storage.r[i] +\
             config.discount * storage.m[i] * q_ot_st[i+1] - q_ot_st[i]
+          # a_A: [num_workers, 1]
           a_A = a_A * config.gae_tau * config.discount *\
             storage.m[i] + a_td_error
         o_adv[i] = o_A
@@ -89,91 +90,106 @@ class DoeAgent(BaseAgent):
     config = self.config
 
     states, at_old, pat_log_prob_old, ot_old, po_t_log_prob_old, \
-      v_st, o_adv, a_ret, a_adv, inits, prev_options = storage.cat(
+      v_st, o_adv, a_ret, a_adv, prev_options = storage.cat(
         ['s', 'at', 'pat_log_prob', 'ot', 'po_t_log', \
-         'v_st', 'o_adv', 'a_ret', 'a_adv', 'init','prev_o'])
+         'v_st', 'o_adv', 'a_ret', 'a_adv', 'prev_o'])
     a_adv = (a_adv - a_adv.mean()) / a_adv.std()
     o_adv = (o_adv - o_adv.mean()) / o_adv.std()
 
-    for _ in range(config.optimization_epochs):
-      sampler = random_sample(np.arange(states.size(0)), config.mini_batch_size)
-      for batch_indices in sampler:
-        '''
-        batch_size=mini_batch_size
+    def ppo_loss(p_log_new, p_log_old, adv, clip_rate):
+      p_ratio = (p_log_new - p_log_old).exp()
+      p_obj = p_ratio * adv
+      p_obj_clipped = p_ratio.clamp(1.0 - clip_rate, 1.0 + clip_rate) * adv
+      p_loss = -torch.min(p_obj, p_obj_clipped).mean()
+      return p_loss
 
-        batch_indices: [batch_size]
-        sampled_states: [batch_size, state_dim]
-        sampled_actions: [batch_size, act_dim]
-        sampled_options: [batch_size, 1]
-        sampled_log_pi_bar_old: [batch_size, 1]
-        sampled_v_st: [batch_size, 1]
-        sampled_o_adv: [batch_size, 1]
-        sampled_a_ret: [batch_size, 1]
-        sampled_a_adv: [batch_size, 1]
-        sampled_inits: [batch_size, 1]
-        sampled_prev_options: [batch_size, 1]
-        '''
-        batch_indices = tensor(batch_indices).long()
-        batch_all_index = range_tensor(len(batch_indices))
-        sampled_states = states[batch_indices]
-        sampled_at_old = at_old[batch_indices]
-        sampled_pat_log_prob_old = pat_log_prob_old[batch_indices]
-        sampled_ot_old = ot_old[batch_indices]
-        sampled_po_t_log_prob_old = po_t_log_prob_old[batch_indices]
-        sampled_v_st = v_st[batch_indices]
-        sampled_o_adv = o_adv[batch_indices]
-        sampled_a_ret = a_ret[batch_indices]
-        sampled_a_adv = a_adv[batch_indices]
-        sampled_inits = inits[batch_indices]
-        sampled_prev_options = prev_options[batch_indices]
+    def learn_action(prediction, sampled_at_old, sampled_pat_log_prob_old,
+                     sampled_ot_old, sampled_a_adv, sampled_a_ret):
+      # mean/std: [num_workers, action_dim]
+      pat_mean = prediction['pat_mean']
+      pat_std = prediction['pat_std']
+      pat_dist = torch.distributions.Normal(pat_mean, pat_std)
+      # pat_new: [num_workers, 1]
+      pat_new = pat_dist.log_prob(sampled_at_old).sum(-1).exp().unsqueeze(-1)
+      pat_log_prob_new = pat_new.add(1e-5).log()
 
-        prediction = self.network(sampled_states, sampled_prev_options)
+      pat_loss = ppo_loss(pat_log_prob_new, sampled_pat_log_prob_old,
+                          sampled_a_adv, self.config.ppo_ratio_clip_action)
 
-        # mean/std: [num_workers, action_dim]
-        pat_mean = prediction['pat_mean']
-        pat_std = prediction['pat_std']
-        pat_dist = torch.distributions.Normal(pat_mean, pat_std)
-        # pat_new: [num_workers, 1]
-        pat_new = pat_dist.log_prob(sampled_at_old).sum(-1).exp().unsqueeze(-1)
-        pat_log_prob_new = pat_new.add(1e-5).log()
+      q_loss = (prediction['q_o_st'].gather(1, sampled_ot_old) -
+                sampled_a_ret).pow(2).mul(0.5).mean()
+      return pat_loss + q_loss
 
-        pat_ratio = (pat_log_prob_new - sampled_pat_log_prob_old).exp()
-        pat_obj = pat_ratio * sampled_a_adv
-        pat_obj_clipped = pat_ratio.clamp(
-            1.0 - self.config.ppo_ratio_clip_action,
-            1.0 + self.config.ppo_ratio_clip_action) * sampled_a_adv
-        pat_loss = -torch.min(pat_obj, pat_obj_clipped).mean()
+    def learn_option(prediction, sampled_ot_old, sampled_po_t_log_prob_old,
+                     sampled_o_adv, sampled_v_st):
+      po_t_ent = -(prediction['po_t_log'] * prediction['po_t']).sum(-1).mean()
+      pot_log_prob_new = prediction['po_t_log'][batch_all_index,
+                                                sampled_ot_old.squeeze(-1)]
+      pot_log_prob_old = sampled_po_t_log_prob_old[batch_all_index,
+                                                   sampled_ot_old.squeeze(-1)]
+      option_clip_ratio = self._option_clip_schedular()
+      pot_loss = ppo_loss(pot_log_prob_new, pot_log_prob_old, sampled_o_adv,
+                          option_clip_ratio)
+      pot_loss = pot_loss - config.entropy_weight * po_t_ent
 
-        po_t_ent = -(prediction['po_t_log'] * prediction['po_t']).sum(-1).mean()
-        if config.ppo_opt_loss:
-          pot_log_prob_new = prediction['po_t_log'][batch_all_index,
-                                                    sampled_ot_old.squeeze(-1)]
-          pot_log_prob_old = sampled_po_t_log_prob_old[
-              batch_all_index, sampled_ot_old.squeeze(-1)]
-          pot_ratio = (pot_log_prob_new - pot_log_prob_old).exp()
-          pot_obj = pot_ratio * sampled_o_adv
-          option_clip_ratio = self._option_clip_schedular()
-          pot_obj_clipped = pot_ratio.clamp(
-              1.0 - option_clip_ratio, 1.0 + option_clip_ratio) * sampled_o_adv
-          pot_loss = -torch.min(pot_obj, pot_obj_clipped).mean()
-          pot_loss = pot_loss - config.entropy_weight * po_t_ent
-        else:
-          pot_loss = -(
-            prediction['po_t_log'
-                       ].gather(1, sampled_ot_old) * sampled_a_adv).mean()\
-                          - config.entropy_weight * po_t_ent
+      q_loss = ((prediction['q_o_st'] * prediction['po_t']).sum(
+          axis=1).unsqueeze(-1) - sampled_v_st).pow(2).mul(0.5).mean()
+      return pot_loss + q_loss
 
-        q_loss = (prediction['q_o_st'].gather(1, sampled_ot_old) -
-                  sampled_a_ret).pow(2).mul(0.5).mean()
-        # q_loss = (prediction['q_o_st'] *
-        #           prediction['po_t'].sum(axis=1).unsqueeze(-1) -
-        #           sampled_v_st).pow(2).mul(0.5).mean()
+    learn_fn_list = [[learn_option, 'o'], [learn_action, 'a']]
+    if config.shuffle_train:
+      shuffle(learn_fn_list)
+    for learn_fn, name in learn_fn_list:
+      for _ in range(config.optimization_epochs):
+        sampler = random_sample(
+            np.arange(states.size(0)), config.mini_batch_size)
+        for batch_indices in sampler:
+          '''
+          batch_size=mini_batch_size
 
-        self.opt.zero_grad()
-        (pat_loss + q_loss + pot_loss).backward()
-        nn.utils.clip_grad_norm_(self.network.parameters(),
-                                 config.gradient_clip)
-        self.opt.step()
+          batch_indices: [batch_size]
+          sampled_states: [batch_size, state_dim]
+          sampled_actions: [batch_size, act_dim]
+          sampled_options: [batch_size, 1]
+          sampled_log_pi_bar_old: [batch_size, 1]
+          sampled_v_st: [batch_size, 1]
+          sampled_o_adv: [batch_size, 1]
+          sampled_a_ret: [batch_size, 1]
+          sampled_a_adv: [batch_size, 1]
+          sampled_inits: [batch_size, 1]
+          sampled_prev_options: [batch_size, 1]
+          '''
+          batch_indices = tensor(batch_indices).long()
+          batch_all_index = range_tensor(len(batch_indices))
+          sampled_states = states[batch_indices]
+          sampled_prev_options = prev_options[batch_indices]
+
+          prediction = self.network(sampled_states, sampled_prev_options)
+          learn_params = {
+              'a':
+                  dict(
+                      prediction=prediction,
+                      sampled_at_old=at_old[batch_indices],
+                      sampled_pat_log_prob_old=pat_log_prob_old[batch_indices],
+                      sampled_ot_old=ot_old[batch_indices],
+                      sampled_a_adv=a_adv[batch_indices],
+                      sampled_a_ret=a_ret[batch_indices]),
+              'o':
+                  dict(
+                      prediction=prediction,
+                      sampled_ot_old=ot_old[batch_indices],
+                      sampled_po_t_log_prob_old=po_t_log_prob_old[
+                          batch_indices],
+                      sampled_o_adv=o_adv[batch_indices],
+                      sampled_v_st=v_st[batch_indices])
+          }
+
+          loss = learn_fn(**learn_params[name])
+          self.opt.zero_grad()
+          loss.backward()
+          nn.utils.clip_grad_norm_(self.network.parameters(),
+                                   config.gradient_clip)
+          self.opt.step()
 
   def rollout(self, storage, config, states):
     '''
@@ -277,7 +293,7 @@ class DoeAgent(BaseAgent):
       storage.placeholder()
 
       if config.log_analyze_stat and self.total_steps % (config.max_steps //
-                                                         100):
+                                                         20):
         try:
           with open('./analyze/%s.pkl' % (config.log_file_apdx), 'rb') as f:
             old_logallsteps_storage = pickle.load(f)

@@ -110,6 +110,7 @@ def doe_continuous(**kwargs):
   use_gae = True
   gae_tau = 0.95
   ppo_ratio_clip_option_max = 0.4
+  shuffle_train = False
   ppo_ratio_clip_option_min = 0.2
   ppo_opt_loss = True
   # kwargs['remark'] = 'CO_Schedular_r%.2f_UseGae%s_L%.2f_' %\
@@ -133,6 +134,7 @@ def doe_continuous(**kwargs):
   config.merge(kwargs)
   config.log_analyze_stat = True
   config.ppo_opt_loss = ppo_opt_loss
+  config.shuffle_train = shuffle_train
 
   if config.tasks:
     set_tasks(config)
