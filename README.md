@@ -6,6 +6,7 @@
 
 ## Log ##
 
+### Done###
 - log value
 - log option
 
@@ -29,9 +30,13 @@
 
 ### Action Nets ###
 
-- Action net use self attention (transformer encoder)
+- action policy pass gradients of option embedding back
+  - gradient theorem for this
+
+#### Done ####
 - Rather than num_option action nets, use 1 action net with
   different option embedding inputs
+- Action net use self attention (transformer encoder)
 
 ### Value Functions ###
 

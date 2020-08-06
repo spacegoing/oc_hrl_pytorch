@@ -84,36 +84,82 @@ def get_nw_ts_v_dict(tsbd_be_end_ts, key_ts_nw_v_dict, keys):
   return nw_ts_v_dict, padded_nw_ts_v_dict, pad_len
 
 
-def plot_key_figure(nw_ts_v_dict, key, key_settings=None, plt_settings=None):
+def plot_key_figure(nw_ts_v_dict,
+                    plot_keys,
+                    data_settings_dict=None,
+                    plt_settings_dict=None):
+  if data_settings_dict is None:
+    data_settings_dict = dict()
+  if plt_settings_dict is None:
+    plt_settings_dict = dict()
 
-  def ot_value_fn(nw_ts_v_dict, key_settings):
+  plt_settings_dict['meta'] = dict()
+
+  def get_fg_ax_list(plt_settings_dict, nrow=1, ncol=1, new=False):
+    if new:
+      fg, ax_list = plt.subplots(nrow, ncol, sharex=True)
+      plt_settings_dict['meta']['fg'] = fg
+      plt_settings_dict['meta']['ax_list'] = ax_list
+    else:
+      fg = plt_settings_dict.get('fg', None)
+      ax_list = plt_settings_dict.get('ax_list', None)
+      if fg is None:
+        fg, ax_list = plt.subplots(nrow, ncol, sharex=True)
+      if ax_list is None:
+        if not fg.axes:
+          fg.subplot(nrow, ncol, 1)
+        ax_list = fg.axes
+      plt_settings_dict['meta']['fg'] = fg
+      plt_settings_dict['meta']['ax_list'] = ax_list
+
+  num_workers = nw_ts_v_dict[plot_keys[0]].shape[0]
+  get_fg_ax_list(plt_settings_dict, num_workers)
+  plt_settings_dict['meta']['nrows'] = num_workers
+
+  def q_o_st_value_fn(nw_ts_v_dict, data_settings=None):
+    value_mat = nw_ts_v_dict['q_o_st']
+    return value_mat
+
+  def ot_value_fn(nw_ts_v_dict, data_settings=None):
     value_mat = nw_ts_v_dict['ot']
     value_mat = value_mat.squeeze(-1)
     return value_mat
 
-  def ot_plot_fn(value_mat, plt_settings):
-    plt.figure()
-    ax = plt.axes()
-    ax.set_title(plt_settings['title'])
-    sns.heatmap(value_mat, cmap=plt_settings['cmap'])
+  def ot_plot_fn(value_mat, plt_settings=None, meta_settings=None):
+    fg, ax_list, nrows = meta_settings['fg'], meta_settings[
+        'ax_list'], meta_settings['nrows']
+    fg.suptitle(plt_settings['title'])
 
     cats = np.unique(value_mat)
-    n_cat = cats.shape[0]
-    colorbar = ax.collections[0].colorbar
-    r = colorbar.vmax - colorbar.vmin
-    colorbar.set_ticks(
-        [colorbar.vmin + r / n_cat * (0.5 + i) for i in range(n_cat)])
-    colorbar.set_ticklabels([str(i) for i in cats])
+    for i, ax in enumerate(ax_list.flat):
+      ax = sns.heatmap(
+          np.expand_dims(value_mat[i], -1).T,
+          vmax=cats.max(),
+          vmin=cats.min(),
+          cmap=plt_settings['cmap'],
+          ax=ax)
+
+    # one colorbar
+    # https://stackoverflow.com/questions/28356359/one-colorbar-for-seaborn-heatmaps-in-subplot
+    # n_cat = cats.shape[0]
+    # colorbar = fg.colorbar(ax)
+    # r = colorbar.vmax - colorbar.vmin
+    # colorbar.set_ticks(
+    #     [colorbar.vmin + r / n_cat * (0.5 + i) for i in range(n_cat)])
+    # colorbar.set_ticklabels([str(i) for i in cats])
 
   key_fn = {'ot': [ot_value_fn, ot_plot_fn]}
-  if key in key_fn:
-    v_fn, plt_fn = key_fn[key]
-    value_mat = v_fn(nw_ts_v_dict, key_settings)
-    plt_fn(value_mat, plt_settings)
+  for key in plot_keys:
+    if key in key_fn:
+      v_fn, plt_fn = key_fn[key]
+      data_settings = data_settings_dict.get(key, None)
+      value_mat = v_fn(nw_ts_v_dict, data_settings)
+      plt_settings = plt_settings_dict.get(key, None)
+      plt_fn(value_mat, plt_settings, plt_settings_dict['meta'])
 
 
 def plot_file(nm, tsbd_be_end_ts, keys, plot_keys):
-  key_ts_nw_v_dict = get_np_ktnv_dict(nm)
+  key_ts_nw_v_dict = get_np_ktnv_dict(nm, keys=keys)
   nw_ts_v_dict, padded_nw_ts_v_dict, pad_len = get_nw_ts_v_dict(
       tsbd_be_end_ts, key_ts_nw_v_dict, keys)
 
@@ -125,37 +171,76 @@ def plot_file(nm, tsbd_be_end_ts, keys, plot_keys):
       },
   }
 
-  for key in plot_keys:
-    plot_key_figure(padded_nw_ts_v_dict, key,\
-                    plt_settings=plt_settings_dict.get(key))
+  plot_key_figure(
+      padded_nw_ts_v_dict, plot_keys, plt_settings_dict=plt_settings_dict)
 
 
 if __name__ == "__main__":
   # list to dict of np array
-  keys = ['s', 'r', 'm', 'at', 'ot', 'pot_ent', 'q_ot_st']
 
-  ## ebcba61 OptPPO use PPO adv for options
-  # best 1,2
-  tsbd_be_end_ts = [[860000, 984000], [1016000, 1124000], [1848000, 2000000]]
-  nm = 'HalfCheetah-v2-gate_Tanh()-num_workers_4-remark_OptPPO_DOE_nhead4_dm100_nl3_nhid50-tasks_False-run-13-200801-012038.pkl'
-  plot_file(nm, tsbd_be_end_ts, keys, plot_keys=keys)
-  nm = 'HalfCheetah-v2-gate_Tanh()-num_workers_4-remark_OptPPO_DOE_nhead4_dm100_nl3_nhid50-tasks_False-run-13-200801-012043.pkl'
-  plot_file(nm, tsbd_be_end_ts, keys, plot_keys=keys)
-  # worst 3,4
-  nm = 'HalfCheetah-v2-gate_Tanh()-num_workers_4-remark_OptPPO_DOE_nhead4_dm100_nl3_nhid50-tasks_False-run-13-200801-012045.pkl'
-  plot_file(nm, tsbd_be_end_ts, keys, plot_keys=keys)
-  nm = 'HalfCheetah-v2-gate_Tanh()-num_workers_4-remark_OptPPO_DOE_nhead4_dm100_nl3_nhid50-tasks_False-run-13-200801-012043.pkl'
-  plot_file(nm, tsbd_be_end_ts, keys, plot_keys=keys)
+  def single_trans_action_detached():
+    ## 2fe8001 single transformer action net; action back grad to option
+    # best
+    keys = ['s', 'r', 'm', 'at', 'ot', 'pot_ent', 'q_o_st']
+    ## 3 starts better than 4
+    # tsbd_be_end_ts = [[916000, 1112000]]
+    ## end
+    # tsbd_be_end_ts = [[1884000, 2000000]]
+    ## 1 switching long option
+    tsbd_be_end_ts = [[1160000, 1260000]]
+    tsbd_be_end_ts = [[1376000, 1444000]]
+    tsbd_be_end_ts = [[1704000, 1806000]]
+    tsbd_be_end_ts = [[1200000, 2000000]]
+    nm = 'HalfCheetah-v2-gate_Tanh()-num_workers_4-remark_TaTrue_EvenAll_SepPPO_Shuffle_DOE_nhead4_dm40_nl1_nhid50-tasks_False-run-41-200803-112825.pkl'
+    plot_file(nm, tsbd_be_end_ts, keys, plot_keys=keys)
+    nm = 'HalfCheetah-v2-gate_Tanh()-num_workers_4-remark_TaTrue_EvenAll_SepPPO_Shuffle_DOE_nhead4_dm40_nl1_nhid50-tasks_False-run-41-200803-112829.pkl'
+    plot_file(nm, tsbd_be_end_ts, keys, plot_keys=keys)
+    # worst
+    nm = 'HalfCheetah-v2-gate_Tanh()-num_workers_4-remark_TaTrue_EvenAll_SepPPO_Shuffle_DOE_nhead4_dm40_nl1_nhid50-tasks_False-run-41-200803-112831.pkl'
+    plot_file(nm, tsbd_be_end_ts, keys, plot_keys=keys)
+    nm = 'HalfCheetah-v2-gate_Tanh()-num_workers_4-remark_TaTrue_EvenAll_SepPPO_Shuffle_DOE_nhead4_dm40_nl1_nhid50-tasks_False-run-41-200803-112835.pkl'
+    plot_file(nm, tsbd_be_end_ts, keys, plot_keys=keys)
+    plt.show()
 
-  ## c21ad7b Qbody QotLoss
-  tsbd_be_end_ts = [[1348000, 1472000]]
-  nm = 'HalfCheetah-v2-gate_Tanh()-num_workers_4-remark_Qbody_QotLoss_DOE_nhead4_dm100_nl3_nhid50-tasks_False-run-13-200801-114225.pkl'
-  plot_file(nm, tsbd_be_end_ts, keys, plot_keys=keys)
-  nm = 'HalfCheetah-v2-gate_Tanh()-num_workers_4-remark_Qbody_DOE_nhead4_dm100_nl3_nhid50-tasks_False-run-13-200801-113910.pkl'
-  plot_file(nm, tsbd_be_end_ts, keys, plot_keys=keys)
-  plt.show()
+  def single_trans_action_not_detached():
+    ## 2fe8001 single transformer action net; action back grad to option
+    # best
+    keys = ['s', 'r', 'm', 'at', 'ot', 'pot_ent', 'q_o_st']
+    tsbd_be_end_ts = [[0, 100000], [124000, 240000], [1488000, 1640000]]
+    nm = 'HalfCheetah-v2-gate_Tanh()-num_workers_4-remark_TaTrue_EvenAll_SepPPO_Shuffle_DOE_nhead4_dm40_nl2_nhid50-tasks_False-run-44-200803-002542.pkl'
+    plot_file(nm, tsbd_be_end_ts, keys, plot_keys=keys)
+    # worst
+    nm = 'HalfCheetah-v2-gate_Tanh()-num_workers_4-remark_TaTrue_EvenAll_SepPPO_Shuffle_DOE_nhead4_dm40_nl2_nhid50-tasks_False-run-44-200803-002545.pkl'
+    plot_file(nm, tsbd_be_end_ts, keys, plot_keys=keys)
+    plt.show()
+
+  def ppo_adv_option():
+    keys = ['s', 'r', 'm', 'at', 'ot', 'pot_ent', 'q_ot_st']
+    ## ebcba61 OptPPO use PPO adv for options
+    # best 1,2
+    tsbd_be_end_ts = [[860000, 984000], [1016000, 1124000], [1848000, 2000000]]
+    nm = 'HalfCheetah-v2-gate_Tanh()-num_workers_4-remark_OptPPO_DOE_nhead4_dm100_nl3_nhid50-tasks_False-run-13-200801-012038.pkl'
+    plot_file(nm, tsbd_be_end_ts, keys, plot_keys=keys)
+    nm = 'HalfCheetah-v2-gate_Tanh()-num_workers_4-remark_OptPPO_DOE_nhead4_dm100_nl3_nhid50-tasks_False-run-13-200801-012043.pkl'
+    plot_file(nm, tsbd_be_end_ts, keys, plot_keys=keys)
+    # worst 3,4
+    nm = 'HalfCheetah-v2-gate_Tanh()-num_workers_4-remark_OptPPO_DOE_nhead4_dm100_nl3_nhid50-tasks_False-run-13-200801-012045.pkl'
+    plot_file(nm, tsbd_be_end_ts, keys, plot_keys=keys)
+    nm = 'HalfCheetah-v2-gate_Tanh()-num_workers_4-remark_OptPPO_DOE_nhead4_dm100_nl3_nhid50-tasks_False-run-13-200801-012043.pkl'
+    plot_file(nm, tsbd_be_end_ts, keys, plot_keys=keys)
+
+  def qloss_use_qot():
+    keys = ['s', 'r', 'm', 'at', 'ot', 'pot_ent', 'q_ot_st']
+    ## c21ad7b Qbody QotLoss
+    tsbd_be_end_ts = [[1348000, 1472000]]
+    nm = 'HalfCheetah-v2-gate_Tanh()-num_workers_4-remark_Qbody_QotLoss_DOE_nhead4_dm100_nl3_nhid50-tasks_False-run-13-200801-114225.pkl'
+    plot_file(nm, tsbd_be_end_ts, keys, plot_keys=keys)
+    nm = 'HalfCheetah-v2-gate_Tanh()-num_workers_4-remark_Qbody_DOE_nhead4_dm100_nl3_nhid50-tasks_False-run-13-200801-113910.pkl'
+    plot_file(nm, tsbd_be_end_ts, keys, plot_keys=keys)
+    plt.show()
 
   def initial_run():
+    keys = ['s', 'r', 'm', 'at', 'ot', 'pot_ent', 'q_ot_st']
     ## initial run git:1e48131
     # performance up->down
     # best
