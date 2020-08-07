@@ -14,6 +14,10 @@
 
 ### Gradients ###
 
+- Proof of layer by layer training 
+- Not only separate by layer, but also separate by timestep. So
+  monthly skill can attend to nanoseconds actions
+
 - ppo clip ratio small -> large
 - rollout length short -> long
 
