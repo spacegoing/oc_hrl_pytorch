@@ -4,6 +4,43 @@ import subprocess
 from importlib import reload
 
 
+def set_tasks(config):
+  if config.game == 'dm-walker':
+    tasks = ['walk', 'run']
+  elif config.game == 'dm-walker-1':
+    tasks = ['squat', 'stand']
+    config.game = 'dm-walker'
+  elif config.game == 'dm-walker-2':
+    tasks = ['walk', 'backward']
+    config.game = 'dm-walker'
+  elif config.game == 'dm-finger':
+    tasks = ['turn_easy', 'turn_hard']
+  elif config.game == 'dm-reacher':
+    tasks = ['easy', 'hard']
+  elif config.game == 'dm-cartpole-b':
+    tasks = ['balance', 'balance_sparse']
+    config.game = 'dm-cartpole'
+  elif config.game == 'dm-cartpole-s':
+    tasks = ['swingup', 'swingup_sparse']
+    config.game = 'dm-cartpole'
+  elif config.game == 'dm-fish':
+    tasks = ['upright', 'downleft']
+  elif config.game == 'dm-hopper':
+    tasks = ['stand', 'hop']
+  elif config.game == 'dm-acrobot':
+    tasks = ['swingup', 'swingup_sparse']
+  elif config.game == 'dm-manipulator':
+    tasks = ['bring_ball', 'bring_peg']
+  elif config.game == 'dm-cheetah':
+    tasks = ['run', 'backward']
+  else:
+    raise NotImplementedError
+
+  games = ['%s-%s' % (config.game, t) for t in tasks]
+  config.tasks = [Task(g, num_envs=config.num_workers) for g in games]
+  config.game = games[0]
+
+
 # OC
 def oc_continuous(**kwargs):
   generate_tag(kwargs)
