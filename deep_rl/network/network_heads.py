@@ -597,10 +597,7 @@ class DoeContiOneOptionNet(BaseNet):
     ## beginning of actions part
     obs_hat = self.act_state_lc(obs)
     # vt: v_t [1, num_workers, dmodel(embedding size in init)]
-    if self.single_transformer_action_net:
-      vt = self.embed_option(ot.unsqueeze(0))
-    else:
-      vt = self.embed_option(ot.unsqueeze(0)).detach()
+    vt = self.embed_option(ot.unsqueeze(0)).detach()
     vt_hat = self.act_embed_lc(vt)
     # obs_cat: [1, num_workers, dmodel(embedding size in init)]
     obs_cat = torch.cat([obs_hat.unsqueeze(0), vt_hat], dim=-1)
