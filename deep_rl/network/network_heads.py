@@ -417,6 +417,29 @@ class DoeContiActionNet(BaseNet):
     }
 
 
+class DoeSkillDecoderNet(BaseNet):
+
+  def __init__(self, dmodel, nhead, nlayers, nhid, dropout):
+    super().__init__()
+    decoder_layers = nn.TransformerDecoderLayer(dmodel, nhead, nhid, dropout)
+    decoder_norm = nn.LayerNorm(dmodel)
+    self.transformer_decoder = nn.TransformerDecoder(decoder_layers, nlayers,
+                                                     decoder_norm)
+    for p in self.transformer_decoder.parameters():
+      if p.dim() > 1:
+        nn.init.xavier_uniform_(p)
+
+  def forward(self, mem, tgt):
+    '''
+    # mem(wt): [num_options, num_workers, dmodel(embedding size in init)]
+    # tgt(obs_hat_1): \tilde{S}_{t-1} [1, num_workers, dmodel]
+
+    # out(dt): [1, num_workers, dmodel]
+    '''
+    out = self.transformer_decoder(tgt, mem)
+    return out
+
+
 class DoeSingleTransActionNet(BaseNet):
 
   def __init__(self, dmodel, nhead, nlayers, nhid, dropout, action_dim):
@@ -495,10 +518,11 @@ class DoeContiOneOptionNet(BaseNet):
     self.de_concat_norm = nn.LayerNorm(dmodel)
     self.de_logtis_lc = layer_init(nn.Linear(dmodel, num_options))
 
-    self.doe = nn.Transformer(dmodel, nhead, nlayers, nlayers, nhid, dropout)
-    for p in self.doe.parameters():
-      if p.dim() > 1:
-        nn.init.xavier_uniform_(p)
+    # self.doe = nn.Transformer(dmodel, nhead, nlayers, nlayers, nhid, dropout)
+    # for p in self.doe.parameters():
+    #   if p.dim() > 1:
+    #     nn.init.xavier_uniform_(p)
+    self.doe = DoeSkillDecoderNet(dmodel, nhead, nlayers, nhid, dropout)
 
     ## Primary Action
     act_state_dim = dmodel // 2
