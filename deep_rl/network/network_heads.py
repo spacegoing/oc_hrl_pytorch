@@ -465,23 +465,23 @@ class DoeSingleTransActionNet(BaseNet):
 
 class DoeCriticNet(BaseNet):
 
-  def __init__(self, state_dim, num_options, hidden_units=(64, 64),
-               gate=F.relu):
+  def __init__(self, dmodel, nhead, nlayers, nhid, dropout, num_options):
     super().__init__()
-    dims = (state_dim,) + hidden_units
-    self.layers = nn.ModuleList([
-        layer_init(nn.Linear(dim_in, dim_out))
-        for dim_in, dim_out in zip(dims[:-1], dims[1:])
-    ])
-    self.gate = gate
-    self.feature_dim = dims[-1]
-    self.logits_lc = layer_init(nn.Linear(dims[-1], num_options))
+    encoder_layers = nn.TransformerEncoderLayer(dmodel, nhead, nhid, dropout)
+    encoder_norm = nn.LayerNorm(dmodel)
+    self.transformer_encoder = nn.TransformerEncoder(encoder_layers, nlayers,
+                                                     encoder_norm)
+    for p in self.transformer_encoder.parameters():
+      if p.dim() > 1:
+        nn.init.xavier_uniform_(p)
+    self.logits_lc = layer_init(nn.Linear(dmodel, num_options))
 
-  def forward(self, x):
-    for layer in self.layers:
-      x = self.gate(layer(x))
-    x = self.logits_lc(x)
-    return x
+  def forward(self, obs):
+    # obs: [1, num_workers, dmodel]
+    # out: [num_workers, dmodel]
+    out = self.transformer_encoder(obs).squeeze(0)
+    q_o = self.logits_lc(out)
+    return q_o
 
 
 class DoeContiOneOptionNet(BaseNet):
@@ -544,7 +544,7 @@ class DoeContiOneOptionNet(BaseNet):
     self.q_state_lc = layer_init(nn.Linear(state_dim, q_state_dim))
     self.q_embed_lc = layer_init(nn.Linear(dmodel, q_ot_dim))
     self.q_concat_norm = nn.LayerNorm(dmodel)
-    self.q_o_st = DoeCriticNet(dmodel, num_options)
+    self.q_o_st = DoeCriticNet(dmodel, nhead, 1, nhid, dropout, num_options)
     self.vfn_obs_norm = nn.LayerNorm(state_dim + dmodel)
 
     self.num_options = num_options
@@ -651,7 +651,7 @@ class DoeContiOneOptionNet(BaseNet):
     obs_cat = torch.cat([obs_hat.unsqueeze(0), dt_hat], dim=-1)
     # obs_hat: \tilde{S}_t [1, num_workers, dmodel]
     obs_hat = self.q_concat_norm(obs_cat)
-    q_o_st = self.q_o_st(obs_hat.squeeze(0))
+    q_o_st = self.q_o_st(obs_hat)
 
     return {
         'po_t': po_t,
