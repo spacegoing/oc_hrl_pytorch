@@ -156,6 +156,9 @@ def plot_key_figure(nw_ts_v_dict,
       value_mat = v_fn(nw_ts_v_dict, data_settings)
       plt_settings = plt_settings_dict.get(key, None)
       plt_fn(value_mat, plt_settings, plt_settings_dict['meta'])
+      plt_settings_dict['meta']['fg'].set_size_inches(19.20, 9.83)
+      plt.savefig(
+          './figures/' + key + plt_settings_dict['flnm'] + '.png', dpi=600)
 
 
 def plot_file(nm, tsbd_be_end_ts, keys, plot_keys):
@@ -169,6 +172,7 @@ def plot_file(nm, tsbd_be_end_ts, keys, plot_keys):
           'title': nm,
           'cmap': ot_cmap
       },
+      'flnm': nm,
   }
 
   plot_key_figure(
