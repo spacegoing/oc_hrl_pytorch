@@ -100,7 +100,7 @@ class BaseAgent:
       state, reward, done, info = env.step(action)
       ret = info[0]['episodic_return']
       steps += 1
-      if ret is not None:
+      if done[0]:
         break
 
   def record_step(self, state):
