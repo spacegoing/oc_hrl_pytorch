@@ -59,6 +59,12 @@ class Config:
         self.async_actor = True
         self.tasks = False
 
+        # added by spacegoing
+        self.add_argument('--run', type=int, default=0)
+        self.add_argument('--params_set', type=str, default='sbenchmark')
+        self.add_argument('--game', type=str, default='HalfCheetah-v2')
+        self.add_argument('--tasks', type=bool, default=False)
+
     @property
     def eval_env(self):
         return self.__eval_env
