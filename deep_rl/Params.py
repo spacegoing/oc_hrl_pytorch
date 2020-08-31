@@ -50,7 +50,7 @@ doe_params_dict = {
     'visualize':
         dict(num_workers=1),
     'sbenchmark':
-        dict(game='HalfCheetah-v2', entropy_weight=0),
+        dict(game='HalfCheetah-v2'),
     'benchmark':
         dict(game='HalfCheetah-v2'),
     'save_model_debug':

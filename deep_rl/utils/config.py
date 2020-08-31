@@ -60,6 +60,9 @@ class Config:
         self.tasks = False
 
         # added by spacegoing
+        self.run = 0
+        self.params_set = 'sbenchmark'
+        self.game = 'HalfCheetah-v2'
         self.add_argument('--run', type=int, default=0)
         self.add_argument('--params_set', type=str, default='sbenchmark')
         self.add_argument('--game', type=str, default='HalfCheetah-v2')
