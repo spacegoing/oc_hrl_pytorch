@@ -9,7 +9,7 @@ def basic_doe_params():
   config.state_normalizer = MeanStdNormalizer()
   config.nhead = 1
   config.dmodel = 40
-  config.nlayers = 3
+  config.nlayers = 1
   config.nhid = 50
   config.single_transformer_action_net = True
 
@@ -52,7 +52,7 @@ doe_params_dict = {
     'sbenchmark':
         dict(game='HalfCheetah-v2'),
     'benchmark':
-        dict(game='HalfCheetah-v2'),
+        dict(game='HalfCheetah-v2', nlayers=3),
     'save_model_debug':
         dict(save_interval=int(5e4 / 2048) * 2048, log_analyze_stat=True),
     'save_model_paper':
@@ -61,4 +61,6 @@ doe_params_dict = {
         dict(
             num_o=16, save_interval=int(5e4 / 2048) * 2048, nhid=64,
             dmodel=128),
+    'swimmer':
+        dict(game='Swimmer-v2', nlayers=1)
 }

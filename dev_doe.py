@@ -165,6 +165,7 @@ def doe_continuous(**kwargs):
   kwargs['remark'] = 'Param_%s_Net_nhead%d_dm%d_nl%d_nhid%d_nO_%d' %\
     (kwargs.get('params_set',''),
      config.nhead, config.dmodel, config.nlayers, config.nhid,config.num_o)
+  kwargs['game'] = config.game
   generate_tag(kwargs)
   config.merge(kwargs)
 
@@ -204,6 +205,5 @@ if __name__ == "__main__":
   # oc_continuous(**kwargs)
 
   # DOE
-  kwargs = dict(
-      game=cf.game, run=cf.run, tasks=cf.tasks, params_set=cf.params_set)
+  kwargs = dict(run=cf.run, tasks=cf.tasks, params_set=cf.params_set)
   doe_continuous(**kwargs)
