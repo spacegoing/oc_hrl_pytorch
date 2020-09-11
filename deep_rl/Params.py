@@ -11,6 +11,8 @@ def basic_doe_params():
   config.dmodel = 40
   config.nlayers = 1
   config.nhid = 50
+  # action decoder
+  config.hidden_units = (64, 64)
   config.single_transformer_action_net = True
 
   # Option Framework
@@ -62,5 +64,5 @@ doe_params_dict = {
             num_o=16, save_interval=int(5e4 / 2048) * 2048, nhid=64,
             dmodel=128),
     'swimmer':
-        dict(game='Swimmer-v2', nlayers=1)
+        dict(game='Swimmer-v2')
 }

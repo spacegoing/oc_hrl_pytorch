@@ -442,24 +442,26 @@ class DoeSkillDecoderNet(BaseNet):
 
 class DoeSingleTransActionNet(BaseNet):
 
-  def __init__(self, dmodel, nhead, nlayers, nhid, dropout, action_dim):
+  def __init__(self, concat_dim, action_dim, hidden_units=(64, 64)):
     super().__init__()
-    encoder_layers = nn.TransformerEncoderLayer(dmodel, nhead, nhid, dropout)
-    encoder_norm = nn.LayerNorm(dmodel)
-    self.transformer_encoder = nn.TransformerEncoder(encoder_layers, nlayers,
-                                                     encoder_norm)
-    for p in self.transformer_encoder.parameters():
+    dims = (concat_dim,) + hidden_units
+    self.layers = nn.ModuleList([
+        layer_init(nn.Linear(dim_in, dim_out))
+        for dim_in, dim_out in zip(dims[:-1], dims[1:])
+    ])
+    for p in self.layers.parameters():
       if p.dim() > 1:
         nn.init.xavier_uniform_(p)
-    self.mean_fc = layer_init(nn.Linear(dmodel, action_dim), 1e-3)
-    self.std_fc = layer_init(nn.Linear(dmodel, action_dim), 1e-3)
+    self.mean_fc = layer_init(nn.Linear(hidden_units[-1], action_dim), 1e-3)
+    self.std_fc = layer_init(nn.Linear(hidden_units[-1], action_dim), 1e-3)
 
   def forward(self, obs):
-    # obs: [1, num_workers, dmodel]
-    # out: [num_workers, dmodel]
-    out = self.transformer_encoder(obs).squeeze(0)
-    mean = torch.tanh(self.mean_fc(out))
-    std = F.softplus(self.std_fc(out))
+    # obs: [num_workers, dmodel+state_dim]
+    for layer in self.layers:
+      obs = F.relu(layer(obs))
+    # obs: [num_workers, hidden_units[-1]]
+    mean = torch.tanh(self.mean_fc(obs))
+    std = F.softplus(self.std_fc(obs))
     return mean, std
 
 
@@ -525,15 +527,12 @@ class DoeContiOneOptionNet(BaseNet):
     self.doe = DoeSkillDecoderNet(dmodel, nhead, nlayers, nhid, dropout)
 
     ## Primary Action
-    act_state_dim = dmodel // 2
-    act_ot_dim = dmodel - act_state_dim
-    self.act_state_lc = layer_init(nn.Linear(state_dim, act_state_dim))
-    self.act_embed_lc = layer_init(nn.Linear(dmodel, act_ot_dim))
-    self.act_concat_norm = nn.LayerNorm(dmodel)
+    concat_dim = state_dim + dmodel
+    self.act_concat_norm = nn.LayerNorm(concat_dim)
     self.single_transformer_action_net = config.single_transformer_action_net
     if self.single_transformer_action_net:
-      self.act_doe = DoeSingleTransActionNet(dmodel, nhead, nlayers, nhid,
-                                             dropout, action_dim)
+      self.act_doe = DoeSingleTransActionNet(
+          concat_dim, action_dim, hidden_units=config.hidden_units)
     else:
       self.action_nets = nn.ModuleList(
           [DoeContiActionNet(dmodel, action_dim) for _ in range(num_options)])
@@ -619,12 +618,10 @@ class DoeContiOneOptionNet(BaseNet):
     ot = po_t_dist.sample()
 
     ## beginning of actions part
-    obs_hat = self.act_state_lc(obs)
     # vt: v_t [1, num_workers, dmodel(embedding size in init)]
-    vt = self.embed_option(ot.unsqueeze(0)).detach()
-    vt_hat = self.act_embed_lc(vt)
-    # obs_cat: [1, num_workers, dmodel(embedding size in init)]
-    obs_cat = torch.cat([obs_hat.unsqueeze(0), vt_hat], dim=-1)
+    vt = self.embed_option(ot.unsqueeze(0)).detach().squeeze(0)
+    # obs_cat: [num_workers, state_dim + dmodel]
+    obs_cat = torch.cat([obs, vt], dim=-1)
     # obs_hat: \tilde{S}_t [1, num_workers, dmodel]
     obs_hat = self.act_concat_norm(obs_cat)
 
