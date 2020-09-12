@@ -440,11 +440,11 @@ class DoeSkillDecoderNet(BaseNet):
     return out
 
 
-class DoeSingleTransActionNet(BaseNet):
+class DoeDecoderFFN(BaseNet):
 
-  def __init__(self, concat_dim, action_dim, hidden_units=(64, 64)):
+  def __init__(self, state_dim, hidden_units=(64, 64)):
     super().__init__()
-    dims = (concat_dim,) + hidden_units
+    dims = (state_dim,) + hidden_units
     self.layers = nn.ModuleList([
         layer_init(nn.Linear(dim_in, dim_out))
         for dim_in, dim_out in zip(dims[:-1], dims[1:])
@@ -452,36 +452,42 @@ class DoeSingleTransActionNet(BaseNet):
     for p in self.layers.parameters():
       if p.dim() > 1:
         nn.init.xavier_uniform_(p)
-    self.mean_fc = layer_init(nn.Linear(hidden_units[-1], action_dim), 1e-3)
-    self.std_fc = layer_init(nn.Linear(hidden_units[-1], action_dim), 1e-3)
 
   def forward(self, obs):
     # obs: [num_workers, dmodel+state_dim]
     for layer in self.layers:
       obs = F.relu(layer(obs))
+    return obs
+
+
+class DoeSingleTransActionNet(BaseNet):
+
+  def __init__(self, concat_dim, action_dim, hidden_units=(64, 64)):
+    super().__init__()
+    self.decoder = DoeDecoderFFN(concat_dim, hidden_units)
+    self.mean_fc = layer_init(nn.Linear(hidden_units[-1], action_dim), 1e-3)
+    self.std_fc = layer_init(nn.Linear(hidden_units[-1], action_dim), 1e-3)
+
+  def forward(self, obs):
+    # obs: [num_workers, dmodel+state_dim]
+    out = self.decoder(obs)
     # obs: [num_workers, hidden_units[-1]]
-    mean = torch.tanh(self.mean_fc(obs))
-    std = F.softplus(self.std_fc(obs))
+    mean = torch.tanh(self.mean_fc(out))
+    std = F.softplus(self.std_fc(out))
     return mean, std
 
 
 class DoeCriticNet(BaseNet):
 
-  def __init__(self, dmodel, nhead, nlayers, nhid, dropout, num_options):
+  def __init__(self, concat_dim, num_options, hidden_units=(64, 64)):
     super().__init__()
-    encoder_layers = nn.TransformerEncoderLayer(dmodel, nhead, nhid, dropout)
-    encoder_norm = nn.LayerNorm(dmodel)
-    self.transformer_encoder = nn.TransformerEncoder(encoder_layers, nlayers,
-                                                     encoder_norm)
-    for p in self.transformer_encoder.parameters():
-      if p.dim() > 1:
-        nn.init.xavier_uniform_(p)
-    self.logits_lc = layer_init(nn.Linear(dmodel, num_options))
+    self.decoder = DoeDecoderFFN(concat_dim, hidden_units)
+    self.logits_lc = layer_init(nn.Linear(hidden_units[-1], num_options))
 
   def forward(self, obs):
-    # obs: [1, num_workers, dmodel]
-    # out: [num_workers, dmodel]
-    out = self.transformer_encoder(obs).squeeze(0)
+    # obs: [num_workers, dmodel]
+    out = self.decoder(obs)
+    # q_o: [num_workers, num_options]
     q_o = self.logits_lc(out)
     return q_o
 
@@ -538,13 +544,8 @@ class DoeContiOneOptionNet(BaseNet):
           [DoeContiActionNet(dmodel, action_dim) for _ in range(num_options)])
 
     ## Critic Nets
-    q_state_dim = dmodel // 2
-    q_ot_dim = dmodel - q_state_dim
-    self.q_state_lc = layer_init(nn.Linear(state_dim, q_state_dim))
-    self.q_embed_lc = layer_init(nn.Linear(dmodel, q_ot_dim))
-    self.q_concat_norm = nn.LayerNorm(dmodel)
-    self.q_o_st = DoeCriticNet(dmodel, nhead, 1, nhid, dropout, num_options)
-    self.vfn_obs_norm = nn.LayerNorm(state_dim + dmodel)
+    self.q_concat_norm = nn.LayerNorm(concat_dim)
+    self.q_o_st = DoeCriticNet(concat_dim, num_options, config.hidden_units)
 
     self.num_options = num_options
     self.action_dim = action_dim
@@ -642,10 +643,8 @@ class DoeContiOneOptionNet(BaseNet):
           pat_std[mask] = pat_o['std']
 
     ## beginning of value fn
-    obs_hat = self.q_state_lc(obs)
-    dt_hat = self.q_embed_lc(dt)
-    # obs_cat: [1, num_workers, dmodel(embedding size in init)]
-    obs_cat = torch.cat([obs_hat.unsqueeze(0), dt_hat], dim=-1)
+    # obs_cat: [num_workers, dmodel(embedding size in init)]
+    obs_cat = torch.cat([obs, dt.squeeze(0)], dim=-1)
     # obs_hat: \tilde{S}_t [1, num_workers, dmodel]
     obs_hat = self.q_concat_norm(obs_cat)
     q_o_st = self.q_o_st(obs_hat)
