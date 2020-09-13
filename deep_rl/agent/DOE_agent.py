@@ -87,6 +87,18 @@ class DoeAgent(BaseAgent):
     a_adv = (a_adv - a_adv.mean()) / a_adv.std()
     o_adv = (o_adv - o_adv.mean()) / o_adv.std()
 
+    def embed_cosine_loss(wt, eps=1e-8):
+      """
+      added eps for numerical stability
+      """
+      w_n = wt.norm(dim=1).unsqueeze(-1)
+      w_norm = wt / torch.max(w_n, eps * torch.ones_like(w_n))
+      sim_mt = torch.mm(w_norm, w_norm.transpose(0, 1))
+      low_diagonal = torch.tril(sim_mt, diagonal=-1)
+      num = (low_diagonal != 0).sum()
+      cosine_loss = low_diagonal.sum() / num
+      return cosine_loss
+
     def ppo_loss(p_log_new, p_log_old, adv, clip_rate):
       '''
       p_log_new: [num_workers, 1]
@@ -100,7 +112,7 @@ class DoeAgent(BaseAgent):
       return p_loss
 
     def learn_action(prediction, sampled_at_old, sampled_pat_log_prob_old,
-                     sampled_a_adv, sampled_a_ret):
+                     sampled_a_adv, sampled_a_ret, misc):
       # mean/std: [num_workers, action_dim]
       pat_mean = prediction['pat_mean']
       pat_std = prediction['pat_std']
@@ -116,7 +128,7 @@ class DoeAgent(BaseAgent):
       return pat_loss + q_loss
 
     def learn_option(prediction, sampled_ot_old, sampled_po_t_log_prob_old,
-                     sampled_o_adv, sampled_o_ret):
+                     sampled_o_adv, sampled_o_ret, misc):
       po_t_ent = -(prediction['po_t_log'] * prediction['po_t']).sum(-1).mean()
       pot_log_prob_new = prediction['po_t_log'].gather(1, sampled_ot_old)
       pot_log_prob_old = sampled_po_t_log_prob_old.gather(1, sampled_ot_old)
@@ -126,7 +138,8 @@ class DoeAgent(BaseAgent):
       pot_loss = pot_loss - config.entropy_weight * po_t_ent
 
       q_loss = (prediction['v_st'] - sampled_o_ret).pow(2).mul(0.5).mean()
-      return pot_loss + q_loss
+      cosine_loss = embed_cosine_loss(misc['wt'], eps=1e-8)
+      return pot_loss + q_loss + config.cos_w * cosine_loss
 
     learn_fn_list = [[learn_option, 'o'], [learn_action, 'a']]
     if config.shuffle_train:
@@ -155,6 +168,7 @@ class DoeAgent(BaseAgent):
           sampled_prev_options = prev_options[batch_indices]
           prediction = self.network(sampled_states, sampled_prev_options)
 
+          misc = dict()
           if name == 'a':
             sampled_action_old = at_old[batch_indices]
             sampled_log_prob_old = pat_log_prob_old[batch_indices]
@@ -165,6 +179,7 @@ class DoeAgent(BaseAgent):
             sampled_log_prob_old = po_t_log_prob_old[batch_indices]
             sampled_adv = o_adv[batch_indices]
             sampled_ret = o_ret[batch_indices]
+            misc = {'wt': prediction['wt']}
 
           loss = learn_fn(
               prediction,
@@ -172,6 +187,7 @@ class DoeAgent(BaseAgent):
               sampled_log_prob_old,
               sampled_adv,
               sampled_ret,
+              misc,
           )
           self.opt.zero_grad()
           loss.backward()

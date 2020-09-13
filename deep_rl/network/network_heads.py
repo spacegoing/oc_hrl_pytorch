@@ -512,21 +512,17 @@ class DoeContiOneOptionNet(BaseNet):
     dropout: dropout for transformer
     '''
     super().__init__()
-    ## transformer
-    ## encoder
+
+    # # test 333
+    # dmodel = state_dim
+
     # option embedding
     self.embed_option = nn.Embedding(num_options, dmodel)
-    ## decoder
-    # norm state, option concatenation
-    # map state -> dmodel
+
+    ## Skill policy: decoder
     self.de_state_lc = layer_init(nn.Linear(state_dim, dmodel))
     self.de_state_norm = nn.LayerNorm(dmodel)
     self.de_logtis_lc = layer_init(nn.Linear(2 * dmodel, num_options))
-
-    # self.doe = nn.Transformer(dmodel, nhead, nlayers, nlayers, nhid, dropout)
-    # for p in self.doe.parameters():
-    #   if p.dim() > 1:
-    #     nn.init.xavier_uniform_(p)
     self.doe = DoeSkillDecoderNet(dmodel, nhead, nlayers, nhid, dropout)
 
     ## Primary Action
@@ -594,7 +590,7 @@ class DoeContiOneOptionNet(BaseNet):
     # decoder inputs
     # vt_1: v_{t-1} [1, num_workers, dmodel(embedding size in init)]
     vt_1 = self.embed_option(prev_options.t()).detach()
-    obs_hat = self.de_state_lc(obs)
+    obs_hat = F.relu(self.de_state_lc(obs))
     obs_hat = self.de_state_norm(obs_hat)
     # obs_cat_1: \tilde{S}_{t-1} [2, num_workers, dmodel]
     obs_cat_1 = torch.cat([obs_hat.unsqueeze(0), vt_1], dim=0)
@@ -655,4 +651,5 @@ class DoeContiOneOptionNet(BaseNet):
         'v_st': (q_o_st * po_t).sum(axis=1).unsqueeze(-1),
         'pat_mean': pat_mean,
         'pat_std': pat_std,
+        'wt': self.embed_option(range_tensor(self.num_options)),
     }

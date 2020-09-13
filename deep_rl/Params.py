@@ -38,6 +38,8 @@ def basic_doe_params():
   # DOE Train
   config.rollout_length = 2048
   config.shuffle_train = True
+  # cosine weight, use for small dmodel
+  config.cos_w = 0.0
 
   # MISC
   config.num_workers = 4
@@ -64,5 +66,7 @@ doe_params_dict = {
             num_o=16, save_interval=int(5e4 / 2048) * 2048, nhid=64,
             dmodel=128),
     'swimmer':
-        dict(game='Swimmer-v2')
+        dict(game='Swimmer-v2'),
+    'swimmer_small':
+        dict(game='Swimmer-v2', dmodel=8, cos_w=0.5)
 }
