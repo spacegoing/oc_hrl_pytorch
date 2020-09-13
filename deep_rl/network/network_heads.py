@@ -518,6 +518,7 @@ class DoeContiOneOptionNet(BaseNet):
 
     # option embedding
     self.embed_option = nn.Embedding(num_options, dmodel)
+    nn.init.orthogonal(self.embed_option.weight)
 
     ## Skill policy: decoder
     self.de_state_lc = layer_init(nn.Linear(state_dim, dmodel))
@@ -537,9 +538,9 @@ class DoeContiOneOptionNet(BaseNet):
           [DoeContiActionNet(dmodel, action_dim) for _ in range(num_options)])
 
     ## Critic Nets
-    self.q_concat_norm = nn.LayerNorm(dmodel + dmodel)
-    self.q_o_st = DoeCriticNet(dmodel + dmodel, num_options,
-                               config.hidden_units)
+    critic_dim = state_dim + dmodel
+    self.q_concat_norm = nn.LayerNorm(critic_dim)
+    self.q_o_st = DoeCriticNet(critic_dim, num_options, config.hidden_units)
 
     self.num_options = num_options
     self.action_dim = action_dim
@@ -588,18 +589,19 @@ class DoeContiOneOptionNet(BaseNet):
     wt = self.embed_option(embed_all_idx)
 
     # decoder inputs
-    # vt_1: v_{t-1} [1, num_workers, dmodel(embedding size in init)]
-    vt_1 = self.embed_option(prev_options.t()).detach()
+    # ot_1: o_{t-1} [1, num_workers, dmodel(embedding size in init)]
+    ot_1 = self.embed_option(prev_options.t()).detach()
+    # obs_hat: [num_workers, dmodel]
     obs_hat = F.relu(self.de_state_lc(obs))
     obs_hat = self.de_state_norm(obs_hat)
     # obs_cat_1: \tilde{S}_{t-1} [2, num_workers, dmodel]
-    obs_cat_1 = torch.cat([obs_hat.unsqueeze(0), vt_1], dim=0)
+    obs_cat_1 = torch.cat([obs_hat.unsqueeze(0), ot_1], dim=0)
 
     # transformer outputs
-    # dt: [2, num_workers, dmodel]
-    dt = self.doe(wt, obs_cat_1)
-    # dt: [num_workers, dmodel(state)+dmodel(o_{t-1})]
-    dt = torch.cat([dt[0].squeeze(0), dt[1].squeeze(0)], dim=-1)
+    # dt: [2, num_workers, dmodel] [0]: mha_st; [1]: mha_ot_1
+    rdt = self.doe(wt, obs_cat_1)
+    # dt: [num_workers, dmodel(st)+dmodel(o_{t-1})]
+    dt = torch.cat([rdt[0].squeeze(0), rdt[1].squeeze(0)], dim=-1)
     # po_t_logits: [num_workers, num_options]
     po_t_logits = self.de_logtis_lc(dt)
     # po_t_logits/po_t/po_t_log: [num_workers, num_options]
@@ -609,14 +611,14 @@ class DoeContiOneOptionNet(BaseNet):
 
     ## sample options
     po_t_dist = torch.distributions.Categorical(probs=po_t)
-    # ot: [num_workers]
-    ot = po_t_dist.sample()
+    # ot_hat: [num_workers]
+    ot_hat = po_t_dist.sample()
 
     ## beginning of actions part
-    # vt: v_t [1, num_workers, dmodel(embedding size in init)]
-    vt = self.embed_option(ot.unsqueeze(0)).detach().squeeze(0)
+    # ot: v_t [num_workers, dmodel(embedding size in init)]
+    ot = self.embed_option(ot_hat.unsqueeze(0)).detach().squeeze(0)
     # obs_cat: [num_workers, state_dim + dmodel]
-    obs_cat = torch.cat([obs, vt], dim=-1)
+    obs_cat = torch.cat([obs, ot], dim=-1)
     # obs_hat: \tilde{S}_t [1, num_workers, dmodel]
     obs_hat = self.act_concat_norm(obs_cat)
 
@@ -629,7 +631,7 @@ class DoeContiOneOptionNet(BaseNet):
       pat_mean = tensor(np.zeros([num_workers, self.action_dim]))
       pat_std = tensor(np.zeros([num_workers, self.action_dim]))
       for o in range(self.num_options):
-        mask = ot == o
+        mask = ot_hat == o
         if mask.any():
           obs_hat_o = obs_hat.squeeze(0)[mask, :]
           pat_o = self.action_nets[o](obs_hat_o)
@@ -637,17 +639,19 @@ class DoeContiOneOptionNet(BaseNet):
           pat_std[mask] = pat_o['std']
 
     ## beginning of value fn
-    # obs_hat: \tilde{S}_t [1, num_workers, dmodel]
-    obs_hat = self.q_concat_norm(dt)
+    # obs_hat: [num_workers, state_dim + dmodel]
+    obs_cat = torch.cat([obs, ot], dim=-1)
+    # obs_hat: [num_workers, state_dim + dmodel]
+    obs_hat = self.q_concat_norm(obs_cat)
     q_o_st = self.q_o_st(obs_hat)
 
     return {
         'po_t': po_t,
         'po_t_log': po_t_log,
-        'ot': ot.unsqueeze(-1),
+        'ot': ot_hat.unsqueeze(-1),
         'po_t_dist': po_t_dist,
         'q_o_st': q_o_st,
-        'q_ot_st': q_o_st.gather(1, ot.unsqueeze(-1)),
+        'q_ot_st': q_o_st.gather(1, ot_hat.unsqueeze(-1)),
         'v_st': (q_o_st * po_t).sum(axis=1).unsqueeze(-1),
         'pat_mean': pat_mean,
         'pat_std': pat_std,

@@ -54,7 +54,7 @@ doe_params_dict = {
     'visualize':
         dict(num_workers=1),
     'sbenchmark':
-        dict(game='HalfCheetah-v2'),
+        dict(game='HalfCheetah-v2', dmodel=20),
     'benchmark':
         dict(game='HalfCheetah-v2', nlayers=3),
     'save_model_debug':
@@ -68,5 +68,16 @@ doe_params_dict = {
     'swimmer':
         dict(game='Swimmer-v2'),
     'swimmer_small':
-        dict(game='Swimmer-v2', dmodel=8, cos_w=0.5)
+        dict(game='Swimmer-v2', dmodel=8, cos_w=0.5),
+    'walker':
+        dict(game='Walker2d-v2'),
+    'walker_small':
+        dict(
+            game='Walker2d-v2',
+            dmodel=20,
+            cos_w=0.0,
+            rollout_length=512,
+            optimization_epochs=2),
+    'hopper':
+        dict(game='Hopper-v2'),
 }

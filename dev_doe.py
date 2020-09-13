@@ -204,6 +204,21 @@ if __name__ == "__main__":
   # ppoc_continuous(**kwargs)
   # oc_continuous(**kwargs)
 
+  cf.params_set = 'sbenchmark'
+  # # ffn action; ffn critic
+  # cf.run = 222
+  # # ffn action; ffn critic; 2 step doe with state_lc (dmodel!=state)
+  # cf.run = 111
+  # ffn action; ffn critic; 2 step doe; relu(state_lc(obs))
+  # cf.run = 660
+  # ffn action; ffn critic (mha_st,mha_ot,st); 2 step doe; relu(state_lc(obs));
+  # cf.run = 661
+
+  # 1. state_lc is a must, it projects to skill context vector space
+  # 2. cosine similarity works for short dmodel.
+  #    large dmodel unlikely to entangle and converges
+  #    faster without cosine similarity
+  cf.run = 660
   # DOE
   kwargs = dict(run=cf.run, tasks=cf.tasks, params_set=cf.params_set)
   doe_continuous(**kwargs)
