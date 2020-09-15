@@ -57,14 +57,12 @@ class Config:
         self.eval_interval = 0
         self.eval_episodes = 10
         self.async_actor = True
-        self.tasks = False
 
         # added by spacegoing
         self.run = 0
         self.params_set = 'sbenchmark'
         self.add_argument('--run', type=int, default=0)
         self.add_argument('--params_set', type=str, default='sbenchmark')
-        self.add_argument('--tasks', type=bool, default=False)
 
     @property
     def eval_env(self):

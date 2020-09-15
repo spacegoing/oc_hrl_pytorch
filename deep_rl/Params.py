@@ -77,15 +77,27 @@ doe_params_dict = {
     'hopper':
         dict(game='Hopper-v2'),
     'dm_cartpole':
-        dict(game='dm-cartpole-b'),
+        dict(game='dm-cartpole-balance'),
     'dm_reacher':
-        dict(game='dm-reacher'),
+        dict(game='dm-reacher-easy'),
     'dm_fish':
-        dict(game='dm-fish'),
+        dict(game='dm-fish-upright'),
     'dm_cheetah':
-        dict(game='dm-cheetah'),
+        dict(game='dm-cheetah-run'),
     'dm_walker1':
-        dict(game='dm-walker-1'),
+        dict(game='dm-walker-squat'),
     'dm_walker2':
-        dict(game='dm-walker-2'),
+        dict(game='dm-walker-walk'),
+    't_cartpole':
+        dict(game='dm-cartpole-b', tasks=True),
+    't_reacher':
+        dict(game='dm-reacher', tasks=True),
+    't_fish':
+        dict(game='dm-fish', tasks=True),
+    't_cheetah':
+        dict(game='dm-cheetah', tasks=True),
+    't_walker1':
+        dict(game='dm-walker-1', tasks=True),
+    't_walker2':
+        dict(game='dm-walker-2', tasks=True),
 }
