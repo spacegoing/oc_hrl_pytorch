@@ -400,23 +400,6 @@ class OptionGaussianActorCriticNet(BaseNet):
     }
 
 
-class DoeContiActionNet(BaseNet):
-
-  def __init__(self, feature_dim, action_dim):
-    super().__init__()
-    self.fc_pi = layer_init(nn.Linear(feature_dim, action_dim), 1e-3)
-    self.std = nn.Parameter(torch.zeros((1, action_dim)))
-
-  def forward(self, phi):
-    mean = torch.tanh(self.fc_pi(phi))
-    std = F.softplus(self.std).expand(mean.size(0), -1)
-
-    return {
-        'mean': mean,
-        'std': std,
-    }
-
-
 class DoeSkillDecoderNet(BaseNet):
 
   def __init__(self, dmodel, nhead, nlayers, nhid, dropout):
@@ -533,12 +516,8 @@ class DoeContiOneOptionNet(BaseNet):
     concat_dim = state_dim + dmodel
     self.act_concat_norm = nn.LayerNorm(concat_dim)
     self.single_transformer_action_net = config.single_transformer_action_net
-    if self.single_transformer_action_net:
-      self.act_doe = DoeSingleTransActionNet(
-          concat_dim, action_dim, hidden_units=config.hidden_units)
-    else:
-      self.action_nets = nn.ModuleList(
-          [DoeContiActionNet(dmodel, action_dim) for _ in range(num_options)])
+    self.act_doe = DoeSingleTransActionNet(
+        concat_dim, action_dim, hidden_units=config.hidden_units)
 
     ## Critic Nets
     critic_dim = state_dim + dmodel
@@ -633,20 +612,7 @@ class DoeContiOneOptionNet(BaseNet):
     obs_hat = self.act_concat_norm(obs_cat)
 
     # generate batch inputs for each option
-    if self.single_transformer_action_net:
-      pat_mean, pat_std = self.act_doe(obs_hat)
-    else:
-      batch_idx = range_tensor(num_workers)
-      # pat_mean/pat_std: [num_workers, act_dim]
-      pat_mean = tensor(np.zeros([num_workers, self.action_dim]))
-      pat_std = tensor(np.zeros([num_workers, self.action_dim]))
-      for o in range(self.num_options):
-        mask = ot_hat == o
-        if mask.any():
-          obs_hat_o = obs_hat.squeeze(0)[mask, :]
-          pat_o = self.action_nets[o](obs_hat_o)
-          pat_mean[mask] = pat_o['mean']
-          pat_std[mask] = pat_o['std']
+    pat_mean, pat_std = self.act_doe(obs_hat)
 
     ## beginning of value fn
     # obs_hat: [num_workers, state_dim + dmodel]
