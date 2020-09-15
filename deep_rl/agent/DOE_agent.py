@@ -25,6 +25,7 @@ class DoeAgent(BaseAgent):
     self.states = self.task.reset()
     self.states = config.state_normalizer(self.states)
     self.prev_options = tensor(np.zeros([config.num_workers, 1])).long()
+    self.initial_state_flags = tensor(np.ones((config.num_workers))).bool()
 
     self.count = 0
 
@@ -81,9 +82,9 @@ class DoeAgent(BaseAgent):
     config = self.config
 
     states, at_old, pat_log_prob_old, ot_old, po_t_log_prob_old,\
-      o_ret, o_adv, a_ret, a_adv, prev_options = storage.cat(
+      o_ret, o_adv, a_ret, a_adv, prev_options, init = storage.cat(
         ['s', 'at', 'pat_log_prob', 'ot', 'po_t_log', \
-         'o_ret', 'o_adv', 'a_ret', 'a_adv', 'prev_o'])
+         'o_ret', 'o_adv', 'a_ret', 'a_adv', 'prev_o', 'init'])
     a_adv = (a_adv - a_adv.mean()) / a_adv.std()
     o_adv = (o_adv - o_adv.mean()) / o_adv.std()
 
@@ -166,7 +167,9 @@ class DoeAgent(BaseAgent):
           batch_indices = tensor(batch_indices).long()
           sampled_states = states[batch_indices]
           sampled_prev_options = prev_options[batch_indices]
-          prediction = self.network(sampled_states, sampled_prev_options)
+          sampled_initial_flags = init[batch_indices]
+          prediction = self.network(sampled_states, sampled_prev_options,
+                                    sampled_initial_flags)
 
           misc = dict()
           if name == 'a':
@@ -208,7 +211,8 @@ class DoeAgent(BaseAgent):
     '''
     with torch.no_grad():
       for _ in range(config.rollout_length):
-        prediction = self.network(states, self.prev_options)
+        prediction = self.network(states, self.prev_options,
+                                  self.initial_state_flags)
 
         # mean/std: [num_workers, action_dim]
         pat_mean = prediction['pat_mean']
@@ -242,11 +246,13 @@ class DoeAgent(BaseAgent):
             's': tensor(states),
             'r': tensor(rewards).unsqueeze(-1),
             'm': tensor(1 - terminals).unsqueeze(-1),
+            'init': tensor(terminals).bool().unsqueeze(-1),
             'prev_o': self.prev_options,
             'at': at,
             'pat_log_prob': pat.add(1e-5).log(),
         })
 
+        self.initial_state_flags = tensor(terminals).bool()
         self.prev_options = prediction['ot']
         states = next_states
         self.total_steps += config.num_workers
@@ -257,6 +263,7 @@ class DoeAgent(BaseAgent):
               's': states,
               'r': np.expand_dims(rewards, axis=-1),
               'm': np.expand_dims(1 - terminals, axis=-1),
+              'init': tensor(terminals).bool().unsqueeze(-1),
               'at': to_np(at),
               'ot': to_np(prediction['ot']),
               'pot_ent': to_np(prediction['po_t_dist'].entropy().unsqueeze(-1)),
@@ -265,7 +272,8 @@ class DoeAgent(BaseAgent):
 
       self.states = states
       # add T+1 step
-      prediction = self.network(states, self.prev_options)
+      prediction = self.network(states, self.prev_options,
+                                self.initial_state_flags)
       storage.add(prediction)
       # padding storage
       storage.placeholder()
@@ -297,7 +305,8 @@ class DoeAgent(BaseAgent):
     obs = env.render(mode='rgb_array')
     obs = color.rgb2gray(obs)
     obs = color.gray2rgb(obs)
-    import ipdb; ipdb.set_trace(context=7)
+    import ipdb
+    ipdb.set_trace(context=7)
 
     # todo: num of options
     mask = [
@@ -324,7 +333,8 @@ class DoeAgent(BaseAgent):
         config.state_normalizer.set_read_only()
 
         state = config.state_normalizer(state)
-        prediction = self.network(state, self.prev_options)
+        prediction = self.network(state, self.prev_options,
+                                  self.initial_state_flags)
         # mean/std: [num_workers, action_dim]
         pat_mean = prediction['pat_mean']
         pat_std = prediction['pat_std']

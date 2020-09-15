@@ -520,7 +520,10 @@ class DoeContiOneOptionNet(BaseNet):
     self.embed_option = nn.Embedding(num_options, dmodel)
     nn.init.orthogonal(self.embed_option.weight)
 
-    ## Skill policy: decoder
+    ## Skill policy
+    # init prob P_0(O|S)
+    self.init_po_ffn = DoeDecoderFFN(state_dim, hidden_units=(64, num_options))
+    # decoder P(O_t|S_t,O_{t-1})
     self.de_state_lc = layer_init(nn.Linear(state_dim, dmodel))
     self.de_state_norm = nn.LayerNorm(dmodel)
     self.de_logtis_lc = layer_init(nn.Linear(2 * dmodel, num_options))
@@ -546,7 +549,7 @@ class DoeContiOneOptionNet(BaseNet):
     self.action_dim = action_dim
     self.to(Config.DEVICE)
 
-  def forward(self, obs, prev_options):
+  def forward(self, obs, prev_options, initial_state_flags):
     '''
     Naming Conventions:
     1. num_workers: batch_size
@@ -563,6 +566,7 @@ class DoeContiOneOptionNet(BaseNet):
     Params:
         obs: [num_workers, state_dim]
         prev_options: [num_workers, 1]
+        initial_state_flags: [num_workers, 1]
 
     Returns:
         po_t: [num_workers, num_options]
@@ -602,10 +606,16 @@ class DoeContiOneOptionNet(BaseNet):
     rdt = self.doe(wt, obs_cat_1)
     # dt: [num_workers, dmodel(st)+dmodel(o_{t-1})]
     dt = torch.cat([rdt[0].squeeze(0), rdt[1].squeeze(0)], dim=-1)
-    # po_t_logits: [num_workers, num_options]
-    po_t_logits = self.de_logtis_lc(dt)
     # po_t_logits/po_t/po_t_log: [num_workers, num_options]
-    po_t_logits = po_t_logits
+    po_t_logits = self.de_logtis_lc(dt)
+
+    # handle initial state
+    if initial_state_flags.any():
+      if initial_state_flags.dim() > 1:
+        initial_state_flags = initial_state_flags.squeeze(-1)
+      po_t_logits_init = self.init_po_ffn(obs)
+      po_t_logits[initial_state_flags] = po_t_logits_init[initial_state_flags]
+
     po_t = F.softmax(po_t_logits, dim=-1)
     po_t_log = F.log_softmax(po_t_logits, dim=-1)
 
