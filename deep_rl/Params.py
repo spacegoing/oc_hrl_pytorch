@@ -17,7 +17,8 @@ def basic_doe_params():
 
   # Option Framework
   config.num_o = 4
-  config.entropy_weight = 0.01
+  config.o_entropy_weight = 0.01
+  config.a_entropy_weight = 0.0
   config.max_steps = 2e6
   config.tasks = False
 
@@ -72,12 +73,19 @@ doe_params_dict = {
     'walker':
         dict(game='Walker2d-v2'),
     'walker_small':
-        dict(
-            game='Walker2d-v2',
-            dmodel=20,
-            cos_w=0.0,
-            rollout_length=512,
-            optimization_epochs=2),
+        dict(game='Walker2d-v2', dmodel=10, cos_w=0.5),
     'hopper':
         dict(game='Hopper-v2'),
+    'dm_cartpole':
+        dict(game='dm-cartpole-b'),
+    'dm_reacher':
+        dict(game='dm-reacher'),
+    'dm_fish':
+        dict(game='dm-fish'),
+    'dm_cheetah':
+        dict(game='dm-cheetah'),
+    'dm_walker1':
+        dict(game='dm-walker-1'),
+    'dm_walker2':
+        dict(game='dm-walker-2'),
 }

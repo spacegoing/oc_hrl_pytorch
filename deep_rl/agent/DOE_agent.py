@@ -125,8 +125,9 @@ class DoeAgent(BaseAgent):
       pat_loss = ppo_loss(pat_log_prob_new, sampled_pat_log_prob_old,
                           sampled_a_adv, self.config.ppo_ratio_clip_action)
 
+      pat_ent = pat_dist.entropy().sum(-1).mean()
       q_loss = (prediction['q_ot_st'] - sampled_a_ret).pow(2).mul(0.5).mean()
-      return pat_loss + q_loss
+      return pat_loss + q_loss - config.a_entropy_weight * pat_ent
 
     def learn_option(prediction, sampled_ot_old, sampled_po_t_log_prob_old,
                      sampled_o_adv, sampled_o_ret, misc):
@@ -136,7 +137,7 @@ class DoeAgent(BaseAgent):
       option_clip_ratio = self._option_clip_schedular()
       pot_loss = ppo_loss(pot_log_prob_new, pot_log_prob_old, sampled_o_adv,
                           option_clip_ratio)
-      pot_loss = pot_loss - config.entropy_weight * po_t_ent
+      pot_loss = pot_loss - config.o_entropy_weight * po_t_ent
 
       q_loss = (prediction['v_st'] - sampled_o_ret).pow(2).mul(0.5).mean()
       cosine_loss = embed_cosine_loss(misc['wt'], eps=1e-8)
