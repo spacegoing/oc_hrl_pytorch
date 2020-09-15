@@ -205,10 +205,17 @@ if __name__ == "__main__":
   # oc_continuous(**kwargs)
 
   params_set = [
-      'dm-cartpole-b', 'dm-reacher', 'dm-fish', 'dm-cheetah', 'dm-walker-1',
-      'dm-walker-2'
+      'dm_cartpole',
+      'dm_reacher',
+      'dm_fish',
+      'dm_cheetah',
+      'dm_walker1',
+      'dm_walker2',
   ]
-  cf.params_set = params_set[0]
+  params_set = [
+      't_cartpole', 't_reacher', 't_cheetah', 't_fish', 't_walker1', 't_walker2'
+  ]
+  cf.params_set = params_set[-1]
 
   ## openai games
   # Valid: half/swimmer:660 walker:663
@@ -234,5 +241,5 @@ if __name__ == "__main__":
   #    faster without cosine similarity
   cf.run = 700
   # DOE
-  kwargs = dict(run=cf.run, tasks=cf.tasks, params_set=cf.params_set)
+  kwargs = dict(run=cf.run, params_set=cf.params_set)
   doe_continuous(**kwargs)
