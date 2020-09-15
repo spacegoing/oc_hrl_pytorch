@@ -216,6 +216,7 @@ if __name__ == "__main__":
       't_cartpole', 't_reacher', 't_cheetah', 't_fish', 't_walker1', 't_walker2'
   ]
   cf.params_set = params_set[-1]
+  cf.params_set = 'walker'
 
   ## openai games
   # Valid: half/swimmer:660 walker:663
@@ -243,3 +244,13 @@ if __name__ == "__main__":
   # DOE
   kwargs = dict(run=cf.run, params_set=cf.params_set)
   doe_continuous(**kwargs)
+
+
+  # self attn 600 v.s. no self attn 700: nl1 best, std 700>600
+
+  # halfcheetah
+  # 700 no self attn; nl3: 1M: 2700-3000-3400  2M: 3500-3700-4200
+  # 700 no self attn; nl1: 1M: 2900-3100-3600  2M: 3700-4000-4000
+  # 600 self attn; nl1: 1M: 2900-3100-3600  2M: 3700-4000-4000
+
+

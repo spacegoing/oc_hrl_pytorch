@@ -72,6 +72,8 @@ doe_params_dict = {
         dict(game='Swimmer-v2', dmodel=8, cos_w=0.5),
     'walker':
         dict(game='Walker2d-v2'),
+    'walker_large':
+        dict(game='Walker2d-v2', nlayers=3),
     'walker_small':
         dict(game='Walker2d-v2', dmodel=10, cos_w=0.5),
     'hopper':
