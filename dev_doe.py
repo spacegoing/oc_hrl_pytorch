@@ -190,7 +190,7 @@ if __name__ == "__main__":
   set_one_thread()
   select_device(-1)
   cf = Config()
-  cf.merge()
+  # cf.merge()
 
   # game = 'HalfCheetah-v2'
   # run = 55
@@ -233,18 +233,19 @@ if __name__ == "__main__":
   # walker_small; 10; no cos; orthogonal init embedding
   # cf.run = 669
 
-  ## dm games
+  # 700 no self attn; nl3: 1M: 2700-3000-3400  2M: 3500-3700-4200
   # cf.run = 700
+  # no self attn; self implemented mha; sate_dim -> dmodel
+  # cf.run = 710
 
   # 1. state_lc is a must, it projects to skill context vector space
   # 2. cosine similarity works for short dmodel.
   #    large dmodel unlikely to entangle and converges
   #    faster without cosine similarity
-  cf.run = 700
+  cf.run = 710
   # DOE
   kwargs = dict(run=cf.run, params_set=cf.params_set)
   doe_continuous(**kwargs)
-
 
   # self attn 600 v.s. no self attn 700: nl1 best, std 700>600
 
@@ -252,5 +253,3 @@ if __name__ == "__main__":
   # 700 no self attn; nl3: 1M: 2700-3000-3400  2M: 3500-3700-4200
   # 700 no self attn; nl1: 1M: 2900-3100-3600  2M: 3700-4000-4000
   # 600 self attn; nl1: 1M: 2900-3100-3600  2M: 3700-4000-4000
-
-

@@ -57,6 +57,8 @@ doe_params_dict = {
     'sbenchmark':
         dict(game='HalfCheetah-v2', dmodel=20),
     'benchmark':
+        dict(game='HalfCheetah-v2'),
+    'lbenchmark':
         dict(game='HalfCheetah-v2', nlayers=3),
     'save_model_debug':
         dict(save_interval=int(5e4 / 2048) * 2048, log_analyze_stat=True),
