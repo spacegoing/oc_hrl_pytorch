@@ -267,7 +267,7 @@ class DoeAgent(BaseAgent):
               'init': tensor(terminals).bool().unsqueeze(-1),
               'at': to_np(at),
               'ot': to_np(prediction['ot']),
-              'pot_ent': to_np(prediction['po_t_dist'].entropy().unsqueeze(-1)),
+              'po_t': to_np(prediction['po_t']),
               'q_o_st': to_np(prediction['q_o_st']),
           })
 

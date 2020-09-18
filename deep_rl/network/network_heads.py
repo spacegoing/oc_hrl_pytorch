@@ -401,10 +401,6 @@ class OptionGaussianActorCriticNet(BaseNet):
     }
 
 
-def attention(q, k, v, d_k):
-  return output
-
-
 class MultiheadAttention(nn.Module):
 
   def __init__(self, qdim, dmodel, nhead):
@@ -421,6 +417,12 @@ class MultiheadAttention(nn.Module):
     self.out = layer_init(nn.Linear(dmodel, dmodel))
 
   def forward(self, q, k, v):
+    '''
+    q: [seq_len, batch_size, query_dim]
+    k,v: [seq_len, batch_size, dmodel]
+
+    output: [seq_len, batch_size, dmodel]
+    '''
     sl, bs = q.size(0), q.size(1)
     # perform linear operation and split into H heads
     q = self.q_linear(q).view(sl, bs, self.h, self.d_k)
@@ -530,13 +532,15 @@ class DoeSkillDecoderNet(BaseNet):
 
 class DoeDecoderFFN(BaseNet):
 
-  def __init__(self, state_dim, hidden_units=(64, 64)):
+  def __init__(self, state_dim, hidden_units=(64, 64), gate=F.relu):
     super().__init__()
     dims = (state_dim,) + hidden_units
     self.layers = nn.ModuleList([
         layer_init(nn.Linear(dim_in, dim_out))
         for dim_in, dim_out in zip(dims[:-1], dims[1:])
     ])
+    self.gate = gate
+    self.out_dim = hidden_units[-1]
     for p in self.layers.parameters():
       if p.dim() > 1:
         nn.init.xavier_uniform_(p)
@@ -544,7 +548,7 @@ class DoeDecoderFFN(BaseNet):
   def forward(self, obs):
     # obs: [num_workers, dmodel+state_dim]
     for layer in self.layers:
-      obs = F.relu(layer(obs))
+      obs = self.gate(layer(obs))
     return obs
 
 
@@ -553,8 +557,8 @@ class DoeSingleTransActionNet(BaseNet):
   def __init__(self, concat_dim, action_dim, hidden_units=(64, 64)):
     super().__init__()
     self.decoder = DoeDecoderFFN(concat_dim, hidden_units)
-    self.mean_fc = layer_init(nn.Linear(hidden_units[-1], action_dim), 1e-3)
-    self.std_fc = layer_init(nn.Linear(hidden_units[-1], action_dim), 1e-3)
+    self.mean_fc = layer_init(nn.Linear(self.decoder.out_dim, action_dim), 1e-3)
+    self.std_fc = layer_init(nn.Linear(self.decoder.out_dim, action_dim), 1e-3)
 
   def forward(self, obs):
     # obs: [num_workers, dmodel+state_dim]
@@ -570,7 +574,7 @@ class DoeCriticNet(BaseNet):
   def __init__(self, concat_dim, num_options, hidden_units=(64, 64)):
     super().__init__()
     self.decoder = DoeDecoderFFN(concat_dim, hidden_units)
-    self.logits_lc = layer_init(nn.Linear(hidden_units[-1], num_options))
+    self.logits_lc = layer_init(nn.Linear(self.decoder.out_dim, num_options))
 
   def forward(self, obs):
     # obs: [num_workers, dmodel]
@@ -603,6 +607,7 @@ class DoeContiOneOptionNet(BaseNet):
 
     # # test 333
     # dmodel = state_dim
+    self.config = config
 
     # option embedding
     self.embed_option = nn.Embedding(num_options, dmodel)
@@ -715,7 +720,8 @@ class DoeContiOneOptionNet(BaseNet):
     # obs_cat: [num_workers, state_dim + dmodel]
     obs_cat = torch.cat([obs, ot], dim=-1)
     # obs_hat: \tilde{S}_t [1, num_workers, dmodel]
-    obs_hat = self.act_concat_norm(obs_cat)
+    # obs_hat = self.act_concat_norm(obs_cat)
+    obs_hat = obs_cat
 
     # generate batch inputs for each option
     pat_mean, pat_std = self.act_doe(obs_hat)
@@ -726,6 +732,12 @@ class DoeContiOneOptionNet(BaseNet):
     # obs_hat: [num_workers, state_dim + dmodel]
     obs_hat = self.q_concat_norm(obs_cat)
     q_o_st = self.q_o_st(obs_hat)
+    # Add delib cost
+    delib_cost = torch.zeros_like(q_o_st)
+    delib_cost[range_tensor(q_o_st.shape[0]),
+               prev_options
+               .squeeze(-1)] -= self.config.delib * torch.abs(q_o_st).mean()
+    q_o_st = q_o_st + delib_cost
 
     return {
         'po_t': po_t,

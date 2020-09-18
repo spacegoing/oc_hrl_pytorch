@@ -41,6 +41,7 @@ def basic_doe_params():
   config.shuffle_train = True
   # cosine weight, use for small dmodel
   config.cos_w = 0.0
+  config.delib = 0.1
 
   # MISC
   config.num_workers = 4
@@ -74,6 +75,19 @@ doe_params_dict = {
         dict(game='Swimmer-v2', dmodel=8, cos_w=0.5),
     'walker':
         dict(game='Walker2d-v2'),
+    'walkerq':
+        dict(game='Walker2d-v2', delib=0.0, num_o=1),
+    'walkerd':
+        dict(
+            game='Walker2d-v2',
+            save_interval=int(5e4 / 2048) * 2048,
+            log_analyze_stat=True),
+    'walker8':
+        dict(
+            game='Walker2d-v2',
+            num_o=8,
+            save_interval=int(5e4 / 2048) * 2048,
+            log_analyze_stat=True),
     'walker_large':
         dict(game='Walker2d-v2', nlayers=3),
     'walker_small':
