@@ -136,7 +136,7 @@ def plot_key_figure(nw_ts_v_dict,
           np.expand_dims(value_mat[i], -1).T,
           vmax=cats.max(),
           vmin=cats.min(),
-          cmap=plt_settings['cmap'],
+          cmap=plt_settings['cmap'][:len(cats)],
           ax=ax)
 
     # one colorbar
@@ -166,13 +166,17 @@ def plot_file(nm, tsbd_be_end_ts, keys, plot_keys):
   nw_ts_v_dict, padded_nw_ts_v_dict, pad_len = get_nw_ts_v_dict(
       tsbd_be_end_ts, key_ts_nw_v_dict, keys)
 
-  ot_cmap = ["1", "#2ecc71", "#3498db", "255", "#e74c3c"]
+  # ot_cmap = ["1", "#2ecc71", "#3498db", "255", "#e74c3c"]
+  ot_cmap = [
+      "1", "#E41A1C", "#377EB8", "255", "#4DAF4A", "#984EA3", "#FF7F00",
+      "#FFFF33", "#A55628", "#F781BF"
+  ]
   plt_settings_dict = {
       'ot': {
           'title': nm,
           'cmap': ot_cmap
       },
-      'flnm': nm,
+      'flnm': nm + str(tsbd_be_end_ts),
   }
 
   plot_key_figure(
@@ -181,109 +185,62 @@ def plot_file(nm, tsbd_be_end_ts, keys, plot_keys):
 
 if __name__ == "__main__":
   # list to dict of np array
-
-  def single_trans_action_detached():
-    ## 2fe8001 single transformer action net; action back grad to option
-    # best
+  def skill_policy_walker():
     keys = ['s', 'r', 'm', 'at', 'ot', 'pot_ent', 'q_o_st']
-    ## 3 starts better than 4
-    # tsbd_be_end_ts = [[916000, 1112000]]
-    ## end
-    # tsbd_be_end_ts = [[1884000, 2000000]]
-    ## 1 switching long option
-    tsbd_be_end_ts = [[1160000, 1260000]]
-    tsbd_be_end_ts = [[1376000, 1444000]]
-    tsbd_be_end_ts = [[1704000, 1806000]]
-    tsbd_be_end_ts = [[1200000, 2000000]]
-    nm = 'HalfCheetah-v2-gate_Tanh()-num_workers_4-remark_TaTrue_EvenAll_SepPPO_Shuffle_DOE_nhead4_dm40_nl1_nhid50-tasks_False-run-41-200803-112825.pkl'
+    tsbd_be_end_ts = [[1200000, 1400000]]
+    nm = 'Walker2d-v2-params_set_walker8-remark_Param_walker8_Net_nhead1_dm40_nl1_nhid50_nO_8-run-710-200917-130941.pkl'
     plot_file(nm, tsbd_be_end_ts, keys, plot_keys=keys)
-    nm = 'HalfCheetah-v2-gate_Tanh()-num_workers_4-remark_TaTrue_EvenAll_SepPPO_Shuffle_DOE_nhead4_dm40_nl1_nhid50-tasks_False-run-41-200803-112829.pkl'
+    nm = 'Walker2d-v2-params_set_walker8-remark_Param_walker8_Net_nhead1_dm40_nl1_nhid50_nO_8-run-710-200917-130951.pkl'
     plot_file(nm, tsbd_be_end_ts, keys, plot_keys=keys)
-    # worst
-    nm = 'HalfCheetah-v2-gate_Tanh()-num_workers_4-remark_TaTrue_EvenAll_SepPPO_Shuffle_DOE_nhead4_dm40_nl1_nhid50-tasks_False-run-41-200803-112831.pkl'
+    tsbd_be_end_ts = [[1200000, 1400000]]
+    nm = 'Walker2d-v2-params_set_walker8-remark_Param_walker8_Net_nhead1_dm40_nl1_nhid50_nO_8-run-710-200917-130951.pkl'
     plot_file(nm, tsbd_be_end_ts, keys, plot_keys=keys)
-    nm = 'HalfCheetah-v2-gate_Tanh()-num_workers_4-remark_TaTrue_EvenAll_SepPPO_Shuffle_DOE_nhead4_dm40_nl1_nhid50-tasks_False-run-41-200803-112835.pkl'
-    plot_file(nm, tsbd_be_end_ts, keys, plot_keys=keys)
-    plt.show()
-
-  def single_trans_action_not_detached():
-    ## 2fe8001 single transformer action net; action back grad to option
-    # best
-    keys = ['s', 'r', 'm', 'at', 'ot', 'pot_ent', 'q_o_st']
-    tsbd_be_end_ts = [[0, 100000], [124000, 240000], [1488000, 1640000]]
-    nm = 'HalfCheetah-v2-gate_Tanh()-num_workers_4-remark_TaTrue_EvenAll_SepPPO_Shuffle_DOE_nhead4_dm40_nl2_nhid50-tasks_False-run-44-200803-002542.pkl'
-    plot_file(nm, tsbd_be_end_ts, keys, plot_keys=keys)
-    # worst
-    nm = 'HalfCheetah-v2-gate_Tanh()-num_workers_4-remark_TaTrue_EvenAll_SepPPO_Shuffle_DOE_nhead4_dm40_nl2_nhid50-tasks_False-run-44-200803-002545.pkl'
-    plot_file(nm, tsbd_be_end_ts, keys, plot_keys=keys)
-    plt.show()
-
-  def ppo_adv_option():
-    keys = ['s', 'r', 'm', 'at', 'ot', 'pot_ent', 'q_ot_st']
-    ## ebcba61 OptPPO use PPO adv for options
-    # best 1,2
-    tsbd_be_end_ts = [[860000, 984000], [1016000, 1124000], [1848000, 2000000]]
-    nm = 'HalfCheetah-v2-gate_Tanh()-num_workers_4-remark_OptPPO_DOE_nhead4_dm100_nl3_nhid50-tasks_False-run-13-200801-012038.pkl'
-    plot_file(nm, tsbd_be_end_ts, keys, plot_keys=keys)
-    nm = 'HalfCheetah-v2-gate_Tanh()-num_workers_4-remark_OptPPO_DOE_nhead4_dm100_nl3_nhid50-tasks_False-run-13-200801-012043.pkl'
-    plot_file(nm, tsbd_be_end_ts, keys, plot_keys=keys)
-    # worst 3,4
-    nm = 'HalfCheetah-v2-gate_Tanh()-num_workers_4-remark_OptPPO_DOE_nhead4_dm100_nl3_nhid50-tasks_False-run-13-200801-012045.pkl'
-    plot_file(nm, tsbd_be_end_ts, keys, plot_keys=keys)
-    nm = 'HalfCheetah-v2-gate_Tanh()-num_workers_4-remark_OptPPO_DOE_nhead4_dm100_nl3_nhid50-tasks_False-run-13-200801-012043.pkl'
+    tsbd_be_end_ts = [[1600000, 1720000]]
+    nm = 'Walker2d-v2-params_set_walker8-remark_Param_walker8_Net_nhead1_dm40_nl1_nhid50_nO_8-run-710-200917-130949.pkl'
     plot_file(nm, tsbd_be_end_ts, keys, plot_keys=keys)
 
-  def qloss_use_qot():
-    keys = ['s', 'r', 'm', 'at', 'ot', 'pot_ent', 'q_ot_st']
-    ## c21ad7b Qbody QotLoss
-    tsbd_be_end_ts = [[1348000, 1472000]]
-    nm = 'HalfCheetah-v2-gate_Tanh()-num_workers_4-remark_Qbody_QotLoss_DOE_nhead4_dm100_nl3_nhid50-tasks_False-run-13-200801-114225.pkl'
-    plot_file(nm, tsbd_be_end_ts, keys, plot_keys=keys)
-    nm = 'HalfCheetah-v2-gate_Tanh()-num_workers_4-remark_Qbody_DOE_nhead4_dm100_nl3_nhid50-tasks_False-run-13-200801-113910.pkl'
-    plot_file(nm, tsbd_be_end_ts, keys, plot_keys=keys)
-    plt.show()
+  def delib_walker():
+    keys = ['s', 'r', 'm', 'init', 'at', 'ot', 'po_t', 'q_o_st']
+    tsbd_be_end_ts = [[550000, 580000]]
+    lnm = 'Walker2d-v2-params_set_walkerd-remark_Param_walkerd_Net_nhead1_dm40_nl1_nhid50_nO_4-run-420-200918-172616.pkl'
+    lsteps_dict_list = read_steps_dict_list(lnm, fpath='./analyze/')
+    plot_file(lnm, tsbd_be_end_ts, keys, plot_keys=keys)
+    hnm = 'Walker2d-v2-params_set_walkerd-remark_Param_walkerd_Net_nhead1_dm40_nl1_nhid50_nO_4-run-420-200918-172620.pkl'
+    hsteps_dict_list = read_steps_dict_list(hnm, fpath='./analyze/')
+    plot_file(hnm, tsbd_be_end_ts, keys, plot_keys=keys)
 
-  def initial_run():
-    keys = ['s', 'r', 'm', 'at', 'ot', 'pot_ent', 'q_ot_st']
-    ## initial run git:1e48131
-    # performance up->down
-    # best
-    nm = 'HalfCheetah-v2-gate_Tanh()-num_workers_4-remark_ShareVnet_DOE_nhead4_dm100_nl3_nhid50-tasks_False-run-4-200731-172620'
-    tsbd_be_end_ts = [[570000, 630000], [628000, 652000], [904000, 972000]]
-    plot_file(nm, tsbd_be_end_ts, keys, plot_keys=keys)
-    plt.show()
-    # worst
-    nm = 'HalfCheetah-v2-gate_Tanh()-num_workers_4-remark_ShareVnet_DOE_nhead4_dm100_nl3_nhid50-tasks_False-run-4-200731-172622'
-    tsbd_be_end_ts = [[524000, 556000], [964000, 996000]]
-    plot_file(nm, tsbd_be_end_ts, keys, plot_keys=keys)
-    plt.show()
+  def show_q_o_st():
+    # No delib
+    nm = 'Walker2d-v2-params_set_walker8-remark_Param_walker8_Net_nhead1_dm40_nl1_nhid50_nO_8-run-710-200917-130951.pkl'
+    nsteps_dict_list = read_steps_dict_list(nm, fpath='./analyze/')
 
-    # compare best, mid, worst
-    tsbd_be_end_ts = [[1004000, 1084000], [1212000, 1280000]]
-    # best
-    nm = 'HalfCheetah-v2-gate_Tanh()-num_workers_4-remark_ShareVnet_DOE_nhead4_dm100_nl3_nhid50-tasks_False-run-4-200731-172620'
-    plot_file(nm, tsbd_be_end_ts, keys, plot_keys=keys)
-    plt.show()
-    # mid
-    nm = 'HalfCheetah-v2-gate_Tanh()-num_workers_4-remark_ShareVnet_DOE_nhead4_dm100_nl3_nhid50-tasks_False-run-4-200731-172618'
-    plot_file(nm, tsbd_be_end_ts, keys, plot_keys=keys)
-    plt.show()
-    nm = 'HalfCheetah-v2-gate_Tanh()-num_workers_4-remark_ShareVnet_DOE_nhead4_dm100_nl3_nhid50-tasks_False-run-4-200731-172624'
-    plot_file(nm, tsbd_be_end_ts, keys, plot_keys=keys)
-    plt.show()
-    # worst
-    nm = 'HalfCheetah-v2-gate_Tanh()-num_workers_4-remark_ShareVnet_DOE_nhead4_dm100_nl3_nhid50-tasks_False-run-4-200731-172622'
-    plot_file(nm, tsbd_be_end_ts, keys, plot_keys=keys)
-    plt.show()
+    # delib
+    def get_dict(nm, tsbd_be_end_ts, keys):
+      key_ts_nw_v_dict = get_np_ktnv_dict(nm, keys=keys)
+      nw_ts_v_dict, padded_nw_ts_v_dict, pad_len = get_nw_ts_v_dict(
+          tsbd_be_end_ts, key_ts_nw_v_dict, keys)
+      return nw_ts_v_dict, padded_nw_ts_v_dict, pad_len
 
-  # def get_padded_ts_array(tsbd_be_end_ts, pad_len):
-  #   bch_be_end_ts = tsbd_ts_bch_step(tsbd_be_end_ts)
-  #   pad_len = 100
-  #   be = 10
-  #   ts_padded_array = []
-  #   for (b, e) in bch_be_end_ts:
-  #     length = e - b + 1
-  #     ts_padded_array.append(np.arange(be, be + length))
-  #     be += length + pad_len
-  #   ts_padded_array = np.concatenate(ts_padded_array, axis=0)
-  #   return ts_padded_array
+    tsbd_be_end_ts = [[550000, 580000]]
+    keys = ['init', 'ot', 'po_t', 'q_o_st']
+    lnm = 'Walker2d-v2-params_set_walkerd-remark_Param_walkerd_Net_nhead1_dm40_nl1_nhid50_nO_4-run-420-200918-172616.pkl'
+    lnw_ts_v_dict, lpadded_nw_ts_v_dict, lpad_len = get_dict(
+        lnm, tsbd_be_end_ts, keys)
+    hnm = 'Walker2d-v2-params_set_walkerd-remark_Param_walkerd_Net_nhead1_dm40_nl1_nhid50_nO_4-run-420-200918-172620.pkl'
+    hsteps_dict_list = read_steps_dict_list(hnm, fpath='./analyze/')
+    hnw_ts_v_dict, hpadded_nw_ts_v_dict, hpad_len = get_dict(
+        hnm, tsbd_be_end_ts, keys)
+
+    def print_step(nw_ts_v_dict, i):
+      print(nw_ts_v_dict['ot'][:, i - 1, :])
+      print(nw_ts_v_dict['po_t'][:, i - 1, :])
+      print(nw_ts_v_dict['q_o_st'][:, i, :])
+      print(nw_ts_v_dict['init'][:, i, :])
+
+    i = 0
+    # delib
+    print('low_delib')
+    print_step(lnw_ts_v_dict, i)
+    # print('high_delib')
+    # print_step(hnw_ts_v_dict, i)
+    i += 1
