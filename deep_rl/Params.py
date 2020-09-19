@@ -74,9 +74,26 @@ doe_params_dict = {
     'swimmer_small':
         dict(game='Swimmer-v2', dmodel=8, cos_w=0.5),
     'walker':
-        dict(game='Walker2d-v2'),
+        dict(
+            game='Walker2d-v2',
+            num_workers=1,
+            delib=0.01,
+        ),
+    'walkert':
+        dict(
+            game='Walker2d-v2',
+            num_workers=1,
+            delib=0.01,
+            save_interval=int(5e4 / 2048) * 2048,
+            log_analyze_stat=True),
     'walkerq':
-        dict(game='Walker2d-v2', delib=0.0, num_o=1),
+        dict(
+            game='Walker2d-v2',
+            delib=0.0,
+            num_o=1,
+            # save_interval=int(5e4 / 2048) * 2048,
+            # log_analyze_stat=True,
+        ),
     'walkerd':
         dict(
             game='Walker2d-v2',

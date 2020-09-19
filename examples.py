@@ -414,12 +414,14 @@ def ppo_pixel(**kwargs):
 
 
 def ppo_continuous(**kwargs):
+  kwargs['remark'] = 'PPO4'
   generate_tag(kwargs)
   kwargs.setdefault('log_level', 0)
   config = Config()
   config.merge(kwargs)
 
-  config.task_fn = lambda: Task(config.game)
+  config.num_workers = 4
+  config.task_fn = lambda: Task(config.game, num_envs=config.num_workers)
   config.eval_env = config.task_fn()
 
   config.network_fn = lambda: GaussianActorCriticNet(
@@ -490,9 +492,9 @@ if __name__ == '__main__':
   # option_critic_feature(game=game)
   # ppo_feature(game=game)
 
-  game = 'HalfCheetah-v2'
+  game = 'Walker2d-v2'
   # a2c_continuous(game=game)
-  # ppo_continuous(game=game)
+  ppo_continuous(game=game, tasks=False)
   # ddpg_continuous(game=game)
 
   game = 'BreakoutNoFrameskip-v4'

@@ -216,7 +216,7 @@ if __name__ == "__main__":
       't_cartpole', 't_reacher', 't_cheetah', 't_fish', 't_walker1', 't_walker2'
   ]
   cf.params_set = params_set[-1]
-  cf.params_set = 'walkerq'
+  cf.params_set = 'walker'
 
   ## openai games
   # Valid: half/swimmer:660 walker:663
@@ -249,12 +249,20 @@ if __name__ == "__main__":
   # cf.run = 420
   # mha residule action; dm=40; num_o=1
   # cf.run = 111
+  # ffn action; dm=40; num_o=1; ot=zeros_like(ot)
+  # cf.run = 121
+  # ffn action; dm=40; num_o=1; ot=ones_like(ot)
+  # cf.run = 1211
+  # ffn action; dm=40; num_o=4; num_workers=1; cf.params_set = 'walkert'
+  # cf.run = 4111
+  # No Log
+  # cf.run = 4411
 
   # 1. state_lc is a must, it projects to skill context vector space
   # 2. cosine similarity works for short dmodel.
   #    large dmodel unlikely to entangle and converges
   #    faster without cosine similarity
-  cf.run = 111
+  cf.run = 4411
   # DOE
   kwargs = dict(run=cf.run, params_set=cf.params_set)
   doe_continuous(**kwargs)
