@@ -118,9 +118,8 @@ class DoeAgent(BaseAgent):
       pat_mean = prediction['pat_mean']
       pat_std = prediction['pat_std']
       pat_dist = torch.distributions.Normal(pat_mean, pat_std)
-      # pat_new: [num_workers, 1]
-      pat_new = pat_dist.log_prob(sampled_at_old).sum(-1).exp().unsqueeze(-1)
-      pat_log_prob_new = pat_new.add(1e-5).log()
+      # pat_log_prob_new: [num_workers, 1]
+      pat_log_prob_new = pat_dist.log_prob(sampled_at_old).sum(-1).unsqueeze(-1)
 
       pat_loss = ppo_loss(pat_log_prob_new, sampled_pat_log_prob_old,
                           sampled_a_adv, self.config.ppo_ratio_clip_action)
@@ -222,7 +221,7 @@ class DoeAgent(BaseAgent):
         # actions: [num_workers, action_dim]
         at = pat_dist.sample()
         # pi_at: [num_workers, 1]
-        pat = pat_dist.log_prob(at).sum(-1).exp().unsqueeze(-1)
+        pat_log_prob = pat_dist.log_prob(at).sum(-1).unsqueeze(-1)
 
         # next_states: tuple([state_dim] * num_workers)
         # terminals(bool)/rewards: [num_workers]
@@ -250,7 +249,7 @@ class DoeAgent(BaseAgent):
             'init': tensor(terminals).bool().unsqueeze(-1),
             'prev_o': self.prev_options,
             'at': at,
-            'pat_log_prob': pat.add(1e-5).log(),
+            'pat_log_prob': pat_log_prob,
         })
 
         self.initial_state_flags = tensor(terminals).bool()
@@ -343,7 +342,7 @@ class DoeAgent(BaseAgent):
         # actions: [num_workers, action_dim]
         at = pat_dist.sample()
         # pi_at: [num_workers, 1]
-        pat = pat_dist.log_prob(at).sum(-1).exp().unsqueeze(-1)
+        pat_log_prob = pat_dist.log_prob(at).sum(-1).unsqueeze(-1)
 
         self.prev_options = prediction['ot']
         config.state_normalizer.unset_read_only()
@@ -360,7 +359,6 @@ class DoeAgent(BaseAgent):
             'r': np.expand_dims(reward, axis=-1),
             'm': np.expand_dims(1 - done, axis=-1),
             'at': to_np(at),
-            'pat': to_np(pat),
             'ot': to_np(prediction['ot']),
             'pot_ent': to_np(prediction['po_t_dist'].entropy().unsqueeze(-1)),
             'q_o_st': to_np(prediction['q_o_st']),
