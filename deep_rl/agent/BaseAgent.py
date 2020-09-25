@@ -81,12 +81,13 @@ class BaseAgent:
     config = self.config
     if not config.tasks:
       return
-    segs = np.linspace(0, config.max_steps, len(config.tasks) + 1)
-    if self.total_steps > segs[self.task_ind + 1]:
-      self.task_ind += 1
-      self.task = config.tasks[self.task_ind]
-      self.states = self.task.reset()
-      self.states = config.state_normalizer(self.states)
+    if self.task_ind + 1 < len(config.tasks):
+      segs = np.linspace(0, config.max_steps, len(config.tasks) + 1)
+      if self.total_steps > segs[self.task_ind + 1]:
+        self.task_ind += 1
+        self.task = config.tasks[self.task_ind]
+        self.states = self.task.reset()
+        self.states = config.state_normalizer(self.states)
 
   def record_episode(self, dir, env):
     mkdir(dir)

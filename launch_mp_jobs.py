@@ -16,16 +16,16 @@ def call_job(cmd):
 
 
 if __name__ == "__main__":
-  total_tasks = 280
+  total_tasks = 300
   # only 2 GPUs, cudaid=0/1
   py_path = 'python /home/chli4934/ubCodeLab/oc_hrl_pytorch/mp_jobs.py --i=%d --cudaid=%d'
-  cudaid = 0
+  cudaid = -1
   cmd_list = []
   for i in range(total_tasks):
-    cudaid = 0 if cudaid else 1
+    # cudaid = 0 if cudaid else 1
     cmd_list.append(py_path % (i, cudaid))
 
-  with Pool(processes=4) as pool:
+  with Pool(processes=18) as pool:
     start = time.time()
     for x in pool.imap(call_job, cmd_list):
       print("(Time elapsed: {}s)".format(int(time.time() - start)))

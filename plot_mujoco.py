@@ -40,6 +40,12 @@ class Plotter:
     kwargs.setdefault('top_k_measure', None)
     kwargs.setdefault('interpolation', 100)
     xy_list = self.load_log_dirs(dirs, **kwargs)
+    # todo: only select 1m steps
+    trunc_xy_list = []
+    for x, y in xy_list:
+      one_m_ind = np.where(x > 1e6)[0][0] + 1
+      trunc_xy_list.append([x[:one_m_ind], y[:one_m_ind]])
+    xy_list = trunc_xy_list
 
     if kwargs['top_k']:
       perf = [kwargs['top_k_measure'](y) for _, y in xy_list]
@@ -94,7 +100,11 @@ class Plotter:
     for dir in dirs:
       event_acc = EventAccumulator(dir)
       event_acc.Reload()
-      _, x, y = zip(*event_acc.Scalars(kwargs['tag']))
+      try:
+        _, x, y = zip(*event_acc.Scalars(kwargs['tag']))
+      except KeyError:
+        print('Except!!!!!!!!!!!!!', dir)
+        continue
       xy_list.append([x, y])
     if kwargs['right_align']:
       x_max = float('inf')
@@ -158,7 +168,7 @@ class Plotter:
             plt.plot(x, y[i], label=label, color=color)
             label = None
       plt.title(game, fontsize=30, fontweight="bold")
-      plt.xticks([0, int(2e6)], ['0', r'$2\times10^6$'])
+      plt.xticks([0, int(1e6)], ['0', r'$1\times10^6$'])
       plt.tick_params(axis='x', labelsize=30)
       plt.tick_params(axis='y', labelsize=25)
       plt.xlabel('Steps', fontsize=30)
@@ -173,30 +183,30 @@ FOLDER = '/home/chli4934/ubCodeLab/oc_hrl_pytorch/images'
 def plot_mujoco(type='mean'):
   plotter = Plotter()
   games = [
-      'HalfCheetah-v2',
+      # 'HalfCheetah-v2',
       # 'Walker2d-v2',
       # 'Hopper-v2',
       # 'Swimmer-v2',
+      'Ant-v2',
+      'Humanoid-v2',
   ]
 
   patterns = [
+      # 'nhead1_dm40_nl1_nhid50_nO_4',
       'remark_ASC-PPO',
       'remark_AHP',
       'remark_PPOC',
       'remark_PPO',
-      'num_workers_4-remark_IOPG',
       'num_workers_4-remark_OC',
-      'num_workers_4-remark_ASC-A2C',
   ]
 
   labels = [
+      # 'SA+PPO',
       'DAC+PPO',
       'AHP+PPO',
       'PPOC',
       'PPO',
-      'IOPG',
       'OC',
-      'DAC+A2C',
   ]
 
   plotter.plot_games(
@@ -207,7 +217,7 @@ def plot_mujoco(type='mean'):
       labels=labels,
       right_align=False,
       tag=plotter.RETURN_TRAIN,
-      root='./tmp_log/',
+      root='./do_tf_log',
       interpolation=100,
       window=20,
       top_k=0,
@@ -215,7 +225,7 @@ def plot_mujoco(type='mean'):
 
   plt.tight_layout()
   plt.savefig(
-      '%s/ASquaredC-mujoco-%s.png' % (FOLDER, type), bbox_inches='tight')
+      '%s/Ant_ASquaredC-mujoco-%s.png' % (FOLDER, type), bbox_inches='tight')
   plt.show()
 
 

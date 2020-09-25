@@ -1,62 +1,96 @@
 from deep_rl import *
 import subprocess
+from pymongo import MongoClient
+import traceback
+client = MongoClient('mongodb://localhost:27017')
+db = client['dac']
+error_col = db['mp_jobs_error']
 
 
 def batch_mujoco(cf):
-  games = ['HalfCheetah-v2', 'Walker2d-v2', 'Swimmer-v2', 'Hopper-v2']
-  params = []
-  for game in games:
-    for r in range(10):
-      params.append([
-          a_squared_c_ppo_continuous,
-          dict(game=game, run=r, tasks=False, remark='ASC-PPO', gate=nn.Tanh())
-      ])
-      params.append([
-          ahp_ppo_continuous,
-          dict(game=game, run=r, tasks=False, remark='AHP', gate=nn.Tanh())
-      ])
-      params.append([
-          ppoc_continuous,
-          dict(game=game, run=r, tasks=False, remark='PPOC', gate=nn.Tanh())
-      ])
-      params.append([
-          ppo_continuous,
-          dict(game=game, run=r, tasks=False, remark='PPO', gate=nn.Tanh())
-      ])
+  try:
+    games = [
+        'Ant-v2', 'Humanoid-v2', 'HumanoidStandup-v2',
+        'InvertedDoublePendulum-v2', 'InvertedPendulum-v2', 'Reacher-v2'
+    ]
+    params = []
+    for game in games:
+      for r in range(10):
+        params.append([
+            a_squared_c_ppo_continuous,
+            dict(
+                game=game,
+                run=r,
+                tasks=False,
+                remark='ASC-PPO',
+                gate=nn.Tanh(),
+                num_o=4)
+        ])
+        params.append([
+            ahp_ppo_continuous,
+            dict(
+                game=game,
+                run=r,
+                tasks=False,
+                remark='AHP',
+                gate=nn.Tanh(),
+                num_o=4)
+        ])
+        params.append([
+            ppoc_continuous,
+            dict(
+                game=game,
+                run=r,
+                tasks=False,
+                remark='PPOC',
+                gate=nn.Tanh(),
+                num_o=4)
+        ])
+        params.append([
+            ppo_continuous,
+            dict(game=game, run=r, tasks=False, remark='PPO', gate=nn.Tanh())
+        ])
 
-      params.append([
-          iopg_continuous,
-          dict(
-              game=game,
-              run=r,
-              tasks=False,
-              remark='IOPG',
-              gate=nn.Tanh(),
-              num_workers=4)
-      ])
-      params.append([
-          oc_continuous,
-          dict(
-              game=game,
-              run=r,
-              tasks=False,
-              remark='OC',
-              gate=nn.Tanh(),
-              num_workers=4)
-      ])
-      params.append([
-          a_squared_c_a2c_continuous,
-          dict(
-              game=game,
-              run=r,
-              tasks=False,
-              remark='ASC-A2C',
-              gate=nn.Tanh(),
-              num_workers=4)
-      ])
+        # params.append([
+        #     iopg_continuous,
+        #     dict(
+        #         game=game,
+        #         run=r,
+        #         tasks=False,
+        #         remark='IOPG',
+        #         gate=nn.Tanh(),
+        #         num_workers=4)
+        # ])
+        params.append([
+            oc_continuous,
+            dict(
+                game=game,
+                run=r,
+                tasks=False,
+                remark='OC',
+                gate=nn.Tanh(),
+                num_workers=4,
+                num_o=4)
+        ])
+        # params.append([
+        #     a_squared_c_a2c_continuous,
+        #     dict(
+        #         game=game,
+        #         run=r,
+        #         tasks=False,
+        #         remark='ASC-A2C',
+        #         gate=nn.Tanh(),
+        #         num_workers=4,
+        #         num_o=16)
+        # ])
 
-  algo, param = params[cf.i]
-  algo(**param)
+    algo, param = params[cf.i]
+    algo(**param)
+  except Exception as e:
+    error_col.insert_one({
+        'error': str(e),
+        'tradeback': str(traceback.format_exc())
+    })
   exit()
 
 
@@ -119,7 +153,7 @@ def a_squared_c_ppo_continuous(**kwargs):
   if 'dm-humanoid' in config.game:
     hidden_units = (128, 128)
   else:
-    hidden_units = (64, 64)
+    hidden_units = (128, 128)
 
   config.task_fn = lambda: Task(config.game)
   config.eval_env = config.task_fn()
@@ -171,7 +205,7 @@ def a_squared_c_a2c_continuous(**kwargs):
   if 'dm-humanoid' in config.game:
     hidden_units = (128, 128)
   else:
-    hidden_units = (64, 64)
+    hidden_units = (128, 128)
 
   config.task_fn = lambda: Task(config.game, num_envs=config.num_workers)
   config.eval_env = Task(config.game)
@@ -213,7 +247,7 @@ def ppo_continuous(**kwargs):
   if 'dm-humanoid' in config.game:
     hidden_units = (128, 128)
   else:
-    hidden_units = (64, 64)
+    hidden_units = (128, 128)
 
   config.task_fn = lambda: Task(config.game)
   config.eval_env = config.task_fn()
@@ -259,7 +293,7 @@ def oc_continuous(**kwargs):
   if 'dm-humanoid' in config.game:
     hidden_units = (128, 128)
   else:
-    hidden_units = (64, 64)
+    hidden_units = (128, 128)
 
   config.task_fn = lambda: Task(config.game, num_envs=config.num_workers)
   config.eval_env = Task(config.game)
@@ -304,7 +338,7 @@ def ppoc_continuous(**kwargs):
   if 'dm-humanoid' in config.game:
     hidden_units = (128, 128)
   else:
-    hidden_units = (64, 64)
+    hidden_units = (128, 128)
 
   config.task_fn = lambda: Task(config.game)
   config.eval_env = Task(config.game)
@@ -354,7 +388,7 @@ def ahp_ppo_continuous(**kwargs):
   if 'dm-humanoid' in config.game:
     hidden_units = (128, 128)
   else:
-    hidden_units = (64, 64)
+    hidden_units = (128, 128)
 
   config.task_fn = lambda: Task(config.game)
   config.eval_env = config.task_fn()
@@ -402,7 +436,7 @@ def iopg_continuous(**kwargs):
   if 'dm-humanoid' in config.game:
     hidden_units = (128, 128)
   else:
-    hidden_units = (64, 64)
+    hidden_units = (128, 128)
 
   config.task_fn = lambda: Task(config.game, num_envs=config.num_workers)
   config.eval_env = Task(config.game)
@@ -448,7 +482,7 @@ def visualize_a_squared_c(**kwargs):
   if 'dm-humanoid' in config.game:
     hidden_units = (128, 128)
   else:
-    hidden_units = (64, 64)
+    hidden_units = (128, 128)
 
   config.task_fn = lambda: Task(config.game)
   config.eval_env = config.task_fn()
