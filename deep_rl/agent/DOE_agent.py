@@ -10,6 +10,11 @@ from .BaseAgent import *
 from skimage import color
 import pickle
 from random import shuffle
+from pymongo import MongoClient
+import traceback
+
+client = MongoClient('mongodb://localhost:27017')
+db = client['sa']
 
 
 class DoeAgent(BaseAgent):
@@ -28,6 +33,8 @@ class DoeAgent(BaseAgent):
     self.initial_state_flags = tensor(np.ones((config.num_workers))).bool()
 
     self.count = 0
+    self.exp_col = db[config.log_file_apdx]
+    self.error_col = db[config.log_file_apdx + '_error']
 
     self.all_options = []
     self.logallsteps_storage = []
@@ -258,17 +265,26 @@ class DoeAgent(BaseAgent):
         self.total_steps += config.num_workers
 
         if config.log_analyze_stat:
-          # log analyze stats
-          self.logallsteps_storage.append({
-              's': states,
-              'r': np.expand_dims(rewards, axis=-1),
-              'm': np.expand_dims(1 - terminals, axis=-1),
-              'init': tensor(terminals).bool().unsqueeze(-1),
-              'at': to_np(at),
-              'ot': to_np(prediction['ot']),
-              'po_t': to_np(prediction['po_t']),
-              'q_o_st': to_np(prediction['q_o_st']),
-          })
+          try:
+            store_dict = {
+                's': states,
+                'r': np.expand_dims(rewards, axis=-1),
+                'm': np.expand_dims(1 - terminals, axis=-1),
+                'init': tensor(terminals).bool().unsqueeze(-1),
+                'at': to_np(at),
+                'ot': to_np(prediction['ot']),
+                'po_t': to_np(prediction['po_t']),
+                'q_o_st': to_np(prediction['q_o_st']),
+            }
+            mongo_dict = {k: store_dict[k].tolist() for k in store_dict}
+            mongo_dict['step'] = self.total_steps
+            self.exp_col.insert_one(mongo_dict)
+          except Exception as e:
+            self.error_col.insert_one({
+                'step': self.total_steps,
+                'error': str(e),
+                'tradeback': str(traceback.format_exc())
+            })
 
       self.states = states
       # add T+1 step
@@ -277,17 +293,6 @@ class DoeAgent(BaseAgent):
       storage.add(prediction)
       # padding storage
       storage.placeholder()
-
-      if config.log_analyze_stat and self.total_steps % (config.max_steps //
-                                                         20):
-        try:
-          with open('./analyze/%s.pkl' % (config.log_file_apdx), 'rb') as f:
-            old_logallsteps_storage = pickle.load(f)
-        except FileNotFoundError:
-          old_logallsteps_storage = []
-        with open('./analyze/%s.pkl' % (config.log_file_apdx), 'wb') as f:
-          pickle.dump(old_logallsteps_storage + self.logallsteps_storage, f)
-        self.logallsteps_storage = []
 
   def step(self):
     config = self.config
