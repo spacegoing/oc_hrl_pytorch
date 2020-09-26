@@ -76,10 +76,74 @@ doe_params_dict = {
         dict(
             num_o=16, save_interval=int(5e4 / 2048) * 2048, nhid=64,
             dmodel=128),
+    'swimmer4':
+        dict(
+            game='Swimmer-v2',
+            num_workers=4,
+        ),
     'swimmer':
-        dict(game='Swimmer-v2'),
+        dict(
+            game='Swimmer-v2',
+            num_workers=1,
+        ),
+    'hopper4':
+        dict(
+            game='Hopper-v2',
+            num_workers=4,
+        ),
     'hopper':
-        dict(game='Hopper-v2'),
+        dict(
+            game='Hopper-v2',
+            num_workers=1,
+        ),
+    'ant4': {
+        'game': 'Ant-v2',
+        'num_workers': 4
+    },
+    'humanoid4': {
+        'game': 'Humanoid-v2',
+        'num_workers': 4
+    },
+    'humanoidstandup4': {
+        'game': 'HumanoidStandup-v2',
+        'num_workers': 4
+    },
+    'inverteddoublependulum4': {
+        'game': 'InvertedDoublePendulum-v2',
+        'num_workers': 4
+    },
+    'invertedpendulum4': {
+        'game': 'InvertedPendulum-v2',
+        'num_workers': 4
+    },
+    'reacher4': {
+        'game': 'Reacher-v2',
+        'num_workers': 4
+    },
+    'ant': {
+        'game': 'Ant-v2',
+        'num_workers': 1
+    },
+    'humanoid': {
+        'game': 'Humanoid-v2',
+        'num_workers': 1
+    },
+    'humanoidstandup': {
+        'game': 'HumanoidStandup-v2',
+        'num_workers': 1
+    },
+    'inverteddoublependulum': {
+        'game': 'InvertedDoublePendulum-v2',
+        'num_workers': 1
+    },
+    'invertedpendulum': {
+        'game': 'InvertedPendulum-v2',
+        'num_workers': 1
+    },
+    'reacher': {
+        'game': 'Reacher-v2',
+        'num_workers': 1
+    },
     'swimmer_small':
         dict(game='Swimmer-v2', dmodel=8, cos_w=0.5),
     'walker':
@@ -138,8 +202,6 @@ doe_params_dict = {
         dict(game='dm-cheetah-run'),
     'dm_walker1':
         dict(game='dm-walker-squat'),
-    'dm_walker2':
-        dict(game='dm-walker-walk'),
     't_cartpole':
         dict(game='dm-cartpole-b', tasks=True),
     't_reacher':

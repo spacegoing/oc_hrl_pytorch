@@ -58,7 +58,6 @@ class Config:
         self.eval_episodes = 10
         self.async_actor = True
 
-        # added by spacegoing
         self.run = 0
         self.params_set = 'sbenchmark'
         self.add_argument('--run', type=int, default=0)
