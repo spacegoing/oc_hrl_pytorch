@@ -164,10 +164,12 @@ class DummyVecEnv(VecEnv):
     def step_async(self, actions):
         self.actions = actions
 
-    def step_wait(self):
+    def step_wait(self, episodic_flag=True):
         data = []
         for i in range(self.num_envs):
             obs, rew, done, info = self.envs[i].step(self.actions[i])
+            if not episodic_flag:
+                done = False
             if done:
                 obs = self.envs[i].reset()
             data.append([obs, rew, done, info])
@@ -212,10 +214,10 @@ class Task:
     def reset(self):
         return self.env.reset()
 
-    def step(self, actions):
+    def step(self, actions, episodic_flag=True):
         if isinstance(self.action_space, Box):
             actions = np.clip(actions, self.action_space.low, self.action_space.high)
-        return self.env.step(actions)
+        return self.env.step(actions, episodic_flag)
 
 
 if __name__ == '__main__':

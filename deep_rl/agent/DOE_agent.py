@@ -39,6 +39,7 @@ class DoeAgent(BaseAgent):
     self.all_options = []
     self.logallsteps_storage = []
     self.record_storage_list = []
+    self.episodic_flag = False
 
   def _option_clip_schedular(self):
     return self.config.ppo_ratio_clip_option_max - (
@@ -233,7 +234,10 @@ class DoeAgent(BaseAgent):
         # next_states: tuple([state_dim] * num_workers)
         # terminals(bool)/rewards: [num_workers]
         # info: dict(['reward_run', 'reward_ctrl', 'episodic_return'] * 3)
-        next_states, rewards, terminals, info = self.task.step(to_np(at))
+        if self.total_steps > 0.4 * self.config.max_steps:
+          self.episodic_flag = True
+        next_states, rewards, terminals, info = self.task.step(
+            to_np(at), self.episodic_flag)
         self.record_online_return(info)
         rewards = config.reward_normalizer(rewards)
         # next_states: -> [num_workers, state_dim]
