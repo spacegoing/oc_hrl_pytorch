@@ -10,10 +10,10 @@ import re
 
 class Plotter:
   COLORS = [
-      'blue', 'green', 'red', 'orange', 'purple', 'lime', 'lightblue',
+      'orange', 'blue', 'green', 'darkred', 'lime', '#CE1126', 'lightblue',
       'lavender', 'brown', 'coral', 'cyan', 'magenta', 'black', 'gold',
       'yellow', 'pink', 'teal', 'coral', 'lightblue', 'lavender', 'turquoise',
-      'darkgreen', 'tan', 'salmon', 'lightpurple', 'darkred'
+      'darkgreen', 'tan', 'salmon', 'lightpurple'
   ]
 
   RETURN_TRAIN = 'episodic_return_train'
@@ -42,8 +42,8 @@ class Plotter:
     xy_list = self.load_log_dirs(dirs, **kwargs)
     # todo: only select 1m steps
     trunc_xy_list = []
-    for x, y in xy_list:
-      one_m_ind = np.where(x > 1e6)[0][0] + 1
+    for i, (x, y) in enumerate(xy_list):
+      one_m_ind = np.where(x > 999990)[0][0] + 1
       trunc_xy_list.append([x[:one_m_ind], y[:one_m_ind]])
     xy_list = trunc_xy_list
 
@@ -143,11 +143,11 @@ class Plotter:
     kwargs.setdefault('agg', 'mean')
     import matplotlib.pyplot as plt
     l = len(games)
-    plt.figure(figsize=(l * 5, 5))
+    plt.figure()
     plt.rc('text', usetex=True)
     plt.tight_layout()
     for i, game in enumerate(games):
-      plt.subplot(1, l, i + 1)
+      plt.subplot(4, 3, i + 1)
       for j, p in enumerate(kwargs['patterns']):
         label = kwargs['labels'][j]
         color = self.COLORS[j]
@@ -183,30 +183,36 @@ FOLDER = '/home/chli4934/ubCodeLab/oc_hrl_pytorch/images'
 def plot_mujoco(type='mean'):
   plotter = Plotter()
   games = [
-      # 'HalfCheetah-v2',
-      # 'Walker2d-v2',
-      # 'Hopper-v2',
-      # 'Swimmer-v2',
+      ## dac 4 games
+      'HalfCheetah-v2',
+      'Swimmer-v2',
+      'HumanoidStandup-v2',
+      'Reacher-v2',
+      ## Finite
+      'Walker2d-v2',
+      'Hopper-v2',
+      'InvertedPendulum-v2',
+      'InvertedDoublePendulum-v2',
       'Ant-v2',
       'Humanoid-v2',
   ]
 
   patterns = [
-      # 'nhead1_dm40_nl1_nhid50_nO_4',
+      'remark_PPO',
       'remark_ASC-PPO',
       'remark_AHP',
       'remark_PPOC',
-      'remark_PPO',
       'num_workers_4-remark_OC',
+      'nhead1_dm40_nl1_nhid50_nO_4',
   ]
 
   labels = [
-      # 'SA+PPO',
+      'PPO',
       'DAC+PPO',
       'AHP+PPO',
       'PPOC',
-      'PPO',
       'OC',
+      'SA+PPO',
   ]
 
   plotter.plot_games(
@@ -217,7 +223,7 @@ def plot_mujoco(type='mean'):
       labels=labels,
       right_align=False,
       tag=plotter.RETURN_TRAIN,
-      root='./do_tf_log',
+      root='./final/',
       interpolation=100,
       window=20,
       top_k=0,
