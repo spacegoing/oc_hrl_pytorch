@@ -19,7 +19,7 @@ def basic_doe_params():
   config.num_o = 4
   config.o_entropy_weight = 0.01
   config.a_entropy_weight = 0.0
-  config.max_steps = 2e6
+  config.max_steps = 1.1e6
   config.tasks = False
 
   # RL PG Common

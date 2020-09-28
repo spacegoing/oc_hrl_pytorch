@@ -448,63 +448,106 @@ class MultiheadAttention(nn.Module):
     return output
 
 
+# class SkillMhaLayer(BaseNet):
+
+#   def __init__(self, state_dim, dmodel, nhead, dim_feedforward=128):
+#     super().__init__()
+#     self.multihead_attn = MultiheadAttention(state_dim, dmodel, nhead)
+#     # Implementation of Feedforward model
+#     self.linear1 = layer_init(nn.Linear(dmodel, dim_feedforward))
+#     self.linear2 = layer_init(nn.Linear(dim_feedforward, dmodel))
+
+#     self.norm = nn.LayerNorm(dmodel)
+
+#   def forward(self, tgt, memory):
+#     tgt2 = self.multihead_attn(tgt, memory, memory)
+#     tgt2 = self.linear2(F.relu(self.linear1(tgt2)))
+#     tgt2 = self.norm(tgt2)
+#     return tgt2
+
+# class SkillPolicy(BaseNet):
+
+#   def __init__(self, num_options, state_dim, embed_dim, nhead, nlayers, nhid):
+#     '''
+#     hidden_units: layers for FFN(state_dim + embed_dim)
+#     state_dim: query dimension (qdim)
+#     embed_dim: embedding (skill context vector) dimension (kdim, vdim)
+#     '''
+#     super().__init__()
+#     self.state_mha_layers = nn.ModuleList([
+#         SkillMhaLayer(state_dim, embed_dim, nhead, nhid) for i in range(nlayers)
+#     ])
+
+#     # FFN(st,ot-1)->ot_logits: concat state_mha and embed_mha
+#     self.norm = nn.LayerNorm(embed_dim + embed_dim)
+#     dims = (embed_dim + embed_dim,) + (nhid,) + (num_options,)
+#     self.ffn = nn.ModuleList([
+#         layer_init(nn.Linear(dim_in, dim_out))
+#         for dim_in, dim_out in zip(dims[:-1], dims[1:])
+#     ])
+
+#     for p in self.parameters():
+#       if p.dim() > 1:
+#         nn.init.xavier_uniform_(p)
+
+#   def forward(self, state, ot_1, wt):
+#     '''
+#     wt: memory
+#     state: state tgt
+#     ot_1: embed tgt
+#     '''
+#     for mod in self.state_mha_layers:
+#       state = mod(state, wt)
+
+#     out = torch.cat([state, ot_1], dim=-1)
+#     out = self.norm(out)
+#     for layer in self.ffn:
+#       out = F.relu(layer(out))
+#     return out
+
+
 class SkillMhaLayer(BaseNet):
 
-  def __init__(self, state_dim, dmodel, nhead, dim_feedforward=128):
+  def __init__(self, d_model, nhead, dim_feedforward=128, dropout=0.1):
     super().__init__()
-    self.multihead_attn = MultiheadAttention(state_dim, dmodel, nhead)
+    self.multihead_attn = nn.MultiheadAttention(d_model, nhead, dropout=dropout)
     # Implementation of Feedforward model
-    self.linear1 = layer_init(nn.Linear(dmodel, dim_feedforward))
-    self.linear2 = layer_init(nn.Linear(dim_feedforward, dmodel))
+    self.linear1 = nn.Linear(d_model, dim_feedforward)
+    self.dropout = nn.Dropout(dropout)
+    self.linear2 = nn.Linear(dim_feedforward, d_model)
 
-    self.norm = nn.LayerNorm(dmodel)
+    self.norm2 = nn.LayerNorm(d_model)
+    self.norm3 = nn.LayerNorm(d_model)
+    self.dropout2 = nn.Dropout(dropout)
+    self.dropout3 = nn.Dropout(dropout)
 
   def forward(self, tgt, memory):
-    tgt2 = self.multihead_attn(tgt, memory, memory)
-    tgt2 = self.linear2(F.relu(self.linear1(tgt2)))
-    tgt2 = self.norm(tgt2)
-    return tgt2
+    tgt2 = self.multihead_attn(tgt, memory, memory)[0]
+    tgt = tgt + self.dropout2(tgt2)
+    tgt = self.norm2(tgt)
+    tgt2 = self.linear2(self.dropout(F.relu(self.linear1(tgt))))
+    tgt = tgt + self.dropout3(tgt2)
+    tgt = self.norm3(tgt)
+    return tgt
 
 
 class SkillPolicy(BaseNet):
 
-  def __init__(self, num_options, state_dim, embed_dim, nhead, nlayers, nhid):
-    '''
-    hidden_units: layers for FFN(state_dim + embed_dim)
-    state_dim: query dimension (qdim)
-    embed_dim: embedding (skill context vector) dimension (kdim, vdim)
-    '''
+  def __init__(self, dmodel, nhead, nlayers, nhid, dropout):
     super().__init__()
-    self.state_mha_layers = nn.ModuleList([
-        SkillMhaLayer(state_dim, embed_dim, nhead, nhid) for i in range(nlayers)
-    ])
-
-    # FFN(st,ot-1)->ot_logits: concat state_mha and embed_mha
-    self.norm = nn.LayerNorm(embed_dim + embed_dim)
-    dims = (embed_dim + embed_dim,) + (nhid,) + (num_options,)
-    self.ffn = nn.ModuleList([
-        layer_init(nn.Linear(dim_in, dim_out))
-        for dim_in, dim_out in zip(dims[:-1], dims[1:])
-    ])
-
+    self.layers = nn.ModuleList(
+        [SkillMhaLayer(dmodel, nhead, nhid, dropout) for i in range(nlayers)])
+    self.norm = nn.LayerNorm(dmodel)
     for p in self.parameters():
       if p.dim() > 1:
         nn.init.xavier_uniform_(p)
 
-  def forward(self, state, ot_1, wt):
-    '''
-    wt: memory
-    state: state tgt
-    ot_1: embed tgt
-    '''
-    for mod in self.state_mha_layers:
-      state = mod(state, wt)
-
-    out = torch.cat([state, ot_1], dim=-1)
-    out = self.norm(out)
-    for layer in self.ffn:
-      out = F.relu(layer(out))
-    return out
+  def forward(self, memory, tgt):
+    output = tgt
+    for mod in self.layers:
+      output = mod(output, memory)
+    output = self.norm(output)
+    return output
 
 
 class DoeSkillDecoderNet(BaseNet):
@@ -618,8 +661,13 @@ class DoeContiOneOptionNet(BaseNet):
     self.init_po_ffn = DoeDecoderFFN(state_dim, hidden_units=(64, num_options))
     # decoder P(O_t|S_t,O_{t-1})
     # self.doe = DoeSkillDecoderNet(dmodel, nhead, nlayers, nhid, dropout)
-    self.skill_policy = SkillPolicy(num_options, state_dim, dmodel, nhead,
-                                    nlayers, nhid)
+    # decoder P(O_t|S_t,O_{t-1})
+    self.de_state_lc = layer_init(nn.Linear(state_dim, dmodel))
+    self.de_state_norm = nn.LayerNorm(dmodel)
+    self.de_logtis_lc = layer_init(nn.Linear(2 * dmodel, num_options))
+    self.doe = SkillPolicy(dmodel, nhead, nlayers, nhid, dropout)
+    # self.skill_policy = SkillPolicy(num_options, state_dim, dmodel, nhead,
+    #                                 nlayers, nhid)
 
     ## Primary Action
     concat_dim = state_dim + dmodel
@@ -684,20 +732,22 @@ class DoeContiOneOptionNet(BaseNet):
     # ot_1: o_{t-1} [1, num_workers, dmodel(embedding size in init)]
     ot_1 = self.embed_option(prev_options.t()).detach()
 
-    # # obs_hat: [num_workers, dmodel]
-    # obs_hat = F.relu(self.de_state_lc(obs))
-    # obs_hat = self.de_state_norm(obs_hat)
-    # # obs_cat_1: \tilde{S}_{t-1} [2, num_workers, dmodel]
-    # obs_cat_1 = torch.cat([obs_hat.unsqueeze(0), ot_1], dim=0)
+    # obs_hat: [num_workers, dmodel]
+    obs_hat = F.relu(self.de_state_lc(obs))
+    obs_hat = self.de_state_norm(obs_hat)
+    # obs_cat_1: \tilde{S}_{t-1} [2, num_workers, dmodel]
+    obs_cat_1 = torch.cat([obs_hat.unsqueeze(0), ot_1], dim=0)
 
-    # # transformer outputs
-    # # dt: [2, num_workers, dmodel] [0]: mha_st; [1]: mha_ot_1
-    # rdt = self.doe(wt, obs_cat_1)
-    # # dt: [num_workers, dmodel(st)+dmodel(o_{t-1})]
-    # dt = torch.cat([rdt[0].squeeze(0), rdt[1].squeeze(0)], dim=-1)
-    # # po_t_logits/po_t/po_t_log: [num_workers, num_options]
-    # po_t_logits = self.de_logtis_lc(dt)
-    po_t_logits = self.skill_policy(obs.unsqueeze(0), ot_1, wt).squeeze(0)
+    # transformer outputs
+    # dt: [2, num_workers, dmodel] [0]: mha_st; [1]: mha_ot_1
+    rdt = self.doe(wt, obs_cat_1)
+    # dt: [num_workers, dmodel(st)+dmodel(o_{t-1})]
+    dt = torch.cat([rdt[0].squeeze(0), rdt[1].squeeze(0)], dim=-1)
+    if dt.dim() < 2:
+      dt = dt.unsqueeze(0)
+    # po_t_logits/po_t/po_t_log: [num_workers, num_options]
+    po_t_logits = self.de_logtis_lc(dt)
+    # po_t_logits = self.skill_policy(obs.unsqueeze(0), ot_1, wt).squeeze(0)
 
     # handle initial state
     if initial_state_flags.any():
