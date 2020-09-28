@@ -62,20 +62,11 @@ doe_params_dict = {
     'benchmarklog':
         dict(
             game='HalfCheetah-v2',
-            num_workers=1,
             save_interval=int(5e4 / 2048) * 2048,
             log_analyze_stat=True,
         ),
     'lbenchmark':
         dict(game='HalfCheetah-v2', nlayers=3),
-    'save_model_debug':
-        dict(save_interval=int(5e4 / 2048) * 2048, log_analyze_stat=True),
-    'save_model_paper':
-        dict(save_interval=int(1e6 / 2048) * 2048),
-    'humanoid-v2':
-        dict(
-            num_o=16, save_interval=int(5e4 / 2048) * 2048, nhid=64,
-            dmodel=128),
     'swimmer4':
         dict(
             game='Swimmer-v2',
@@ -86,6 +77,26 @@ doe_params_dict = {
             game='Swimmer-v2',
             num_workers=1,
         ),
+    # 'humanoidstandup4': {
+    #     'game': 'HumanoidStandup-v2',
+    #     'num_workers': 4
+    # },
+    'humanoidstandup': {
+        'game': 'HumanoidStandup-v2',
+        'num_workers': 1
+    },
+    # 'reacher4': {
+    #     'game': 'Reacher-v2',
+    #     'num_workers': 4
+    # },
+    'reacher': {
+        'game': 'Reacher-v2',
+        'num_workers': 1
+    },
+    'walker':
+        dict(game='Walker2d-v2', num_workers=1),
+    'walker4':
+        dict(game='Walker2d-v2', num_workers=4),
     'hopper4':
         dict(
             game='Hopper-v2',
@@ -96,62 +107,38 @@ doe_params_dict = {
             game='Hopper-v2',
             num_workers=1,
         ),
-    'ant4': {
+    # 'ant4': {
+    #     'game': 'Ant-v2',
+    #     'num_workers': 4
+    # },
+    'ant': {
         'game': 'Ant-v2',
-        'num_workers': 4
+        'num_workers': 1
     },
     'humanoid4': {
         'game': 'Humanoid-v2',
         'num_workers': 4
     },
-    'humanoidstandup4': {
-        'game': 'HumanoidStandup-v2',
-        'num_workers': 4
-    },
-    'inverteddoublependulum4': {
+    # 'humanoid': {
+    #     'game': 'Humanoid-v2',
+    #     'num_workers': 1
+    # },
+    # 'inverteddoublependulum4': {
+    #     'game': 'InvertedDoublePendulum-v2',
+    #     'num_workers': 4
+    # },
+    'inverteddoublependulum': {
         'game': 'InvertedDoublePendulum-v2',
-        'num_workers': 4
+        'num_workers': 1
     },
     'invertedpendulum4': {
         'game': 'InvertedPendulum-v2',
         'num_workers': 4
     },
-    'reacher4': {
-        'game': 'Reacher-v2',
-        'num_workers': 4
-    },
-    'ant': {
-        'game': 'Ant-v2',
-        'num_workers': 1
-    },
-    'humanoid': {
-        'game': 'Humanoid-v2',
-        'num_workers': 1
-    },
-    'humanoidstandup': {
-        'game': 'HumanoidStandup-v2',
-        'num_workers': 1
-    },
-    'inverteddoublependulum': {
-        'game': 'InvertedDoublePendulum-v2',
-        'num_workers': 1
-    },
-    'invertedpendulum': {
-        'game': 'InvertedPendulum-v2',
-        'num_workers': 1
-    },
-    'reacher': {
-        'game': 'Reacher-v2',
-        'num_workers': 1
-    },
-    'swimmer_small':
-        dict(game='Swimmer-v2', dmodel=8, cos_w=0.5),
-    'walker':
-        dict(
-            game='Walker2d-v2',
-            num_workers=1,
-            delib=0.0,
-        ),
+    # 'invertedpendulum': {
+    #     'game': 'InvertedPendulum-v2',
+    #     'num_workers': 1
+    # },
     'walkerlog':
         dict(
             game='Walker2d-v2',
