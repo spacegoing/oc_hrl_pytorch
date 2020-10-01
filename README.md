@@ -1,74 +1,75 @@
-# Implementation Ideas #
+# The Skill-Action Architecture Readme #
 
-## Config Options ##
+Our implementation is based on *DAC: The Double Actor-Critic
+Architecture for Learning Options* Shangtong Zhang, Shimon
+Whiteson (NeurIPS 2019).
+https://github.com/ShangtongZhang/DeepRL/tree/DAC. We deeply
+appreciate their efforts on opening source their code. We will
+also create a pull request of our code on their branch after
+review.
 
-- how to name / record configurations
+## Installation ##
 
-## Log ##
+We include a requirements.txt in this repo. Users may install
+this repo by executing
 
-### Done###
-- log value
-- log option
+`pip install -r requirements.txt`
 
-## Opt ##
+However, if anything goes wrong, we suggest readers use original
+Shangtong Zhang's requirements.txt. They even provide a
+Dockerfile. However, we have not used docker in our implementations.
 
-### Gradients ###
+### Install MongoDB ###
 
-- Proof of layer by layer training 
-- Not only separate by layer, but also separate by timestep. So
-  monthly skill can attend to nanoseconds actions
+We use MongoDB for storing experiment results. We suggest readers
+to use MongoDB Docker: `https://hub.docker.com/_/mongo`.
 
-- ppo clip ratio small -> large
-- rollout length short -> long
+After docker container is running, users should also have
+`pymongo` installed:
 
-#### Done ####
-- is Qos - Qos_1 correct?
-  - use pot*Q_o_st to compute V(Ot|St,Ot-1)
-- ppo option adv use vst not qost
-  - use o_adv for ppo loss
+`pip install pymongo`
 
-### Option Nets ###
+### Install MuJoCo Gym ###
 
-- better option learning?
-- whether use entropy
+When we install Shangtong Zhang's `requirements.txt`, we hit
+several bugs regards to MuJoCo and OpenAI Gym installation.
+Basically, users need to apply a license from
+http://www.mujoco.org/. If any error with OpenAI Gym / baseline
+is hit, users need to refer to their official Github repo. Most
+issues are answered there.
 
-### Action Nets ###
+## Running SA Experiments ##
 
-- action policy pass gradients of option embedding back
-  - gradient theorem for this
+To run SA paper's experiments on CPUs, simply run:
+`python run_sa.py`
 
-#### Done ####
-- Rather than num_option action nets, use 1 action net with
-  different option embedding inputs
-- Action net use self attention (transformer encoder)
+Users may alter `process=1` to number of CPUs you have.
 
-### Value Functions ###
+### Hyper-Parameters ###
 
-- action, option have different value functions
-- value function use transformer encoding
+All hyper-parameters are in `./deep_rl/Params.py`
 
-## Problems ##
+## Plotting Script ##
 
-### More Independent Between Workers, Better performance ###
-- initial run git:1e48131
-- Best run, each worker's option independent
-- Performance decrease, option choices between workers more
-  related
-  
-#### conclusion ####
-- option choice rely too much on previous one
-- each period has an advantage option, no matter what state, it
-  turns to choose that option
+All OpenAI MuJoCo experiment figures are plotted using Shangtong
+Zhang's original script `plot_mujoco.py` without any parameter
+twiking.
 
-#### Solutions ####
-1. decoupling previous option gradients: options used by decoder
-   detached from embedding
-2. decoupling action option gradients: options used by action do
-   not pass gradients back to embedding
+Other figures (4,5,6) are all plotted using `analyze_mongo.py`
 
-# Origin Readme #
+## Reproduce Our Results ##
 
-This branch is the code for the paper
+Reinforcement learning algorithms are parameters sensitive.
+However, we find SA is surprisingly robust. There should be no
+problem reproduce our results with any random seed etc. Before
+upload this code we run 12 runs of 4 infinite horizon games and
+saved log data in `./doe_tf_log`, some of them are actually even
+better than we reported in paper. Users can compare their results
+with those files as a benchmark.
+
+# Original DAC Readme #
+
+## This branch is the code for the paper ##
 
 *DAC: The Double Actor-Critic Architecture for Learning Options* \
 Shangtong Zhang, Shimon Whiteson (NeurIPS 2019)
