@@ -1,5 +1,24 @@
 # Implementation Ideas #
 
+## Discrepancy ##
+
+I altered
+`/home/chli4934/ubCodeLab/baselines/baselines/common/vec_env/vec_env.py`
+to `vec_env.py.episode_step` by adding `episodic_flag` into
+`step_wait()`:
+
+```python
+class VecEnv(ABC):
+    def step(self, actions, episodic_flag=True):
+        """
+        Step the environments synchronously.
+
+        This is available for backwards compatibility.
+        """
+        self.step_async(actions)
+        return self.step_wait(episodic_flag)
+```
+
 ## Config Options ##
 
 - how to name / record configurations

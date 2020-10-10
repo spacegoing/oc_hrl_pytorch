@@ -263,8 +263,8 @@ if __name__ == "__main__":
   # 2. cosine similarity works for short dmodel.
   #    large dmodel unlikely to entangle and converges
   #    faster without cosine similarity
-  cf.params_set = 'walker'
-  cf.run = 4410
+  cf.params_set = 'ant4'
+  cf.run = 4440
   # DOE
   kwargs = dict(run=cf.run, params_set=cf.params_set)
   doe_continuous(**kwargs)

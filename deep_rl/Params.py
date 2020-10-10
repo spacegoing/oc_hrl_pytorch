@@ -177,8 +177,6 @@ doe_params_dict = {
         dict(game='Walker2d-v2', nlayers=3),
     'walker_small':
         dict(game='Walker2d-v2', dmodel=10, cos_w=0.5),
-    'hopper':
-        dict(game='Hopper-v2'),
     'dm_cartpole':
         dict(game='dm-cartpole-balance'),
     'dm_reacher':

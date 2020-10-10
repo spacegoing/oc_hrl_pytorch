@@ -614,16 +614,24 @@ class DoeSingleTransActionNet(BaseNet):
 
 class DoeCriticNet(BaseNet):
 
-  def __init__(self, concat_dim, num_options, hidden_units=(64, 64)):
+  def __init__(self, concat_dim, num_options, dmodel, hidden_units=(64, 64)):
     super().__init__()
-    self.decoder = DoeDecoderFFN(concat_dim, hidden_units)
-    self.logits_lc = layer_init(nn.Linear(self.decoder.out_dim, num_options))
+    self.so_decoder = DoeDecoderFFN(concat_dim, hidden_units)
+    self.so_lc = layer_init(nn.Linear(self.so_decoder.out_dim, num_options))
+    self.ot_ot1_decoder = DoeDecoderFFN(
+        dmodel, hidden_units, gate=torch.tanh)
+    self.ot_ot1_lc = layer_init(
+        nn.Linear(self.ot_ot1_decoder.out_dim, num_options))
 
-  def forward(self, obs):
+  def forward(self, so, ot, ot_1):
     # obs: [num_workers, dmodel]
-    out = self.decoder(obs)
+    out = self.so_decoder(so)
     # q_o: [num_workers, num_options]
-    q_o = self.logits_lc(out)
+    q_o = self.so_lc(out)
+
+    delib_cost = self.ot_ot1_decoder(ot - ot_1)
+    delib_cost = self.ot_ot1_lc(delib_cost)
+    q_o -= delib_cost
     return q_o
 
 
@@ -679,7 +687,8 @@ class DoeContiOneOptionNet(BaseNet):
     ## Critic Nets
     critic_dim = state_dim + dmodel
     self.q_concat_norm = nn.LayerNorm(critic_dim)
-    self.q_o_st = DoeCriticNet(critic_dim, num_options, config.hidden_units)
+    self.q_o_st = DoeCriticNet(critic_dim, num_options, dmodel,
+                               config.hidden_units)
 
     self.num_options = num_options
     self.action_dim = action_dim
@@ -781,13 +790,13 @@ class DoeContiOneOptionNet(BaseNet):
     obs_cat = torch.cat([obs, ot], dim=-1)
     # obs_hat: [num_workers, state_dim + dmodel]
     obs_hat = self.q_concat_norm(obs_cat)
-    q_o_st = self.q_o_st(obs_hat)
-    # Add delib cost
-    delib_cost = torch.zeros_like(q_o_st)
-    delib_cost[range_tensor(q_o_st.shape[0]),
-               prev_options
-               .squeeze(-1)] -= self.config.delib * torch.abs(q_o_st).mean()
-    q_o_st = q_o_st + delib_cost
+    q_o_st = self.q_o_st(obs_hat, ot, ot_1.squeeze(0))
+    # # Add delib cost
+    # delib_cost = torch.zeros_like(q_o_st)
+    # delib_cost[range_tensor(q_o_st.shape[0]),
+    #            prev_options
+    #            .squeeze(-1)] -= self.config.delib * torch.abs(q_o_st).mean()
+    # q_o_st = q_o_st + delib_cost
 
     return {
         'po_t': po_t,
