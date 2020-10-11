@@ -143,7 +143,7 @@ class Plotter:
     kwargs.setdefault('agg', 'mean')
     import matplotlib.pyplot as plt
     l = len(games)
-    plt.figure()
+    plt.figure(figsize=(5 * 3, 4 * 5))
     plt.rc('text', usetex=True)
     plt.tight_layout()
     for i, game in enumerate(games):
@@ -231,7 +231,9 @@ def plot_mujoco(type='mean'):
 
   plt.tight_layout()
   plt.savefig(
-      '%s/Ant_ASquaredC-mujoco-%s.png' % (FOLDER, type), bbox_inches='tight')
+      '%s/Ant_ASquaredC-mujoco-%s.png' % (FOLDER, type),
+      bbox_inches='tight',
+      dpi=600)
   plt.show()
 
 
