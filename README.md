@@ -1,3 +1,29 @@
+# Installation #
+
+- mujoco-py: install check official github repo
+- baselines: symlink local repo `/home/chli4934/ubCodeLab/baselines/` to `/home/chli4934/anaconda3/lib/python3.8/site-packages/`
+
+## Install Mujoco ##
+
+### Dependencies ###
+
+On Ubuntu 18.04
+
+- When import dm_control: `undefined symbol: __glewBlitFramebuffer`
+  - https://github.com/deepmind/dm_control/issues/3
+  - `sudo apt-get install libglew-dev libglfw3-dev`
+
+### .bashrc ###
+
+```bash
+# https://github.com/deepmind/dm_control/issues/97
+export LD_LIBRARY_PATH="/home/chli4934/.mujoco/mujoco200/bin:$LD_LIBRARY_PATH"
+export MJLIB_PATH=$HOME/.mujoco/mujoco200/bin/libmujoco200.so
+export MJKEY_PATH=$HOME/.mujoco/mujoco200/mjkey.txt
+export MUJOCO_PY_MJPRO_PATH=$HOME/.mujoco/mujoco200/
+export MUJOCO_PY_MJKEY_PATH=$HOME/.mujoco/mujoco200/mjkey.txt
+```
+
 # Implementation Ideas #
 
 ## Config Options ##
