@@ -654,7 +654,7 @@ class DoeContiOneOptionNet(BaseNet):
 
     # option embedding
     self.embed_option = nn.Embedding(num_options, dmodel)
-    nn.init.orthogonal(self.embed_option.weight)
+    nn.init.orthogonal_(self.embed_option.weight)
 
     ## Skill policy
     # init prob P_0(O|S)
