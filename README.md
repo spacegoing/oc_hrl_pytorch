@@ -1,9 +1,35 @@
 # Installation #
 
+
+- MongoDB: `docker run --name mg -v /home/chli4934/ubCodeLab/volumeb3_data:/data -p 27017:27017 -itd mongo`
 - mujoco-py: install check official github repo
 - baselines: symlink local repo `/home/chli4934/ubCodeLab/baselines/` to `/home/chli4934/anaconda3/lib/python3.8/site-packages/`
 
 ## Install Mujoco ##
+
+- Do Not manually install Nvidia Driver. Use `conda install
+  tensorflow-gpu` will automatically install CUDA-toolkit under
+  `anaconda3/pkgs`
+- Download mujoco and activation key. Add path to `.bashrc`
+  ``` bash
+  export LD_LIBRARY_PATH="/home/chli4934/.mujoco/mjpro150/bin:$LD_LIBRARY_PATH"
+  # add libGLxxxx to path
+  export LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH"
+  ```
+
+1. `conda install tensorflow-gpu`
+2. conda install pytorch, script from pytorch official website
+3. Install `mujocopy` https://github.com/openai/mujoco-py/issues/158
+   ``` bash
+   github clone https://github.com/openai/mujoco-py.git
+   cd mujoco-py
+   # switch to 1.50.1.1
+   pip install -e .
+   
+   # after installed, import mujoco it will compile itself
+   pip -c 'import mujoco_py'
+   ```
+4. 
 
 ### Dependencies ###
 

@@ -1,16 +1,17 @@
-# torch==0.4.0
-# torchvision==0.2.1
-# mujoco-py mannual install. no later than 1.5 because gym support?
-gym
-tensorflow
+# conda install tensorflow-gpu
+# pytorch official website generate conda install script
+# install mujoco 1.5 to ~/.mujoco
+# mujoco-py 1.50.1 mannual install
+# pip install 'gym[all]'
+# install baseline. For tensorflow 2 need to manually install
+# baseline on tf2 branch: https://github.com/openai/baselines/tree/tf2
 opencv-python
 tensorboardX
-dm_control
-git+https://github.com/ShangtongZhang/dm_control2gym.git@scalar_fix
 atari-py==0.1.7
 scikit-image==0.14.2
 tqdm==4.31.1
 pathlib==1.0.1
-# roboschool==1.0.49 deprecated
 pymongo
 ipdb
+dm_control
+git+https://github.com/ShangtongZhang/dm_control2gym.git@scalar_fix
