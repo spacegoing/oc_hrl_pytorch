@@ -39,6 +39,7 @@ class DoeAgent(BaseAgent):
     self.all_options = []
     self.logallsteps_storage = []
     self.record_storage_list = []
+    self.env = self.task.env.envs[0].env
 
   def _option_clip_schedular(self):
     return self.config.ppo_ratio_clip_option_max - (
@@ -275,6 +276,7 @@ class DoeAgent(BaseAgent):
                 'ot': to_np(prediction['ot']),
                 'po_t': to_np(prediction['po_t']),
                 'q_o_st': to_np(prediction['q_o_st']),
+                'sim_state': self.env.sim.get_state().flatten(),
             }
             mongo_dict = {k: store_dict[k].tolist() for k in store_dict}
             mongo_dict['step'] = self.total_steps
@@ -302,72 +304,3 @@ class DoeAgent(BaseAgent):
     self.rollout(storage, config, states)
     self.compute_adv(storage)
     self.learn(storage)
-
-  def render_obs(self, env, out_dir, steps):
-    env = env.env.envs[0]
-    # todo: only for dm env; for openai-gym mujoco no need
-    # env.env.render_mode_list['rgb_array']['render_kwargs']['camera_id'] = 'side'
-    obs = env.render(mode='rgb_array')
-    obs = color.rgb2gray(obs)
-    obs = color.gray2rgb(obs)
-    import ipdb
-    ipdb.set_trace(context=7)
-
-    # todo: num of options
-    mask = [
-        [1, 0, 0],  # red
-        [0, 1, 0],  # green
-        [0, 0, 1],  # blue
-        [1, 1, 0],  # yellow
-    ]
-
-    o = to_np(self.prev_options)[0].item()
-    self.all_options.append(o)
-    obs = obs * mask[o]
-    imsave('%s/%04d.png' % (out_dir, steps), obs)
-
-  def record_episode(self, out_dir, env):
-    mkdir(out_dir)
-
-    with torch.no_grad():
-      steps = 0
-      state = env.reset()
-      while True:
-        ## Forward Sample Action
-        config = self.config
-        config.state_normalizer.set_read_only()
-
-        state = config.state_normalizer(state)
-        prediction = self.network(state, self.prev_options,
-                                  self.initial_state_flags)
-        # mean/std: [num_workers, action_dim]
-        pat_mean = prediction['pat_mean']
-        pat_std = prediction['pat_std']
-        pat_dist = torch.distributions.Normal(pat_mean, pat_std)
-        # actions: [num_workers, action_dim]
-        at = pat_dist.sample()
-        # pi_at: [num_workers, 1]
-        pat_log_prob = pat_dist.log_prob(at).sum(-1).unsqueeze(-1)
-
-        self.prev_options = prediction['ot']
-        config.state_normalizer.unset_read_only()
-
-        ## Render env
-        self.render_obs(env, out_dir, steps)
-
-        ## Take action, Sample new state
-        state, reward, done, info = env.step(at)
-        steps += 1
-
-        self.record_storage_list.append({
-            's': state,
-            'r': np.expand_dims(reward, axis=-1),
-            'm': np.expand_dims(1 - done, axis=-1),
-            'at': to_np(at),
-            'ot': to_np(prediction['ot']),
-            'pot_ent': to_np(prediction['po_t_dist'].entropy().unsqueeze(-1)),
-            'q_o_st': to_np(prediction['q_o_st']),
-        })
-
-        if done[0]:
-          break

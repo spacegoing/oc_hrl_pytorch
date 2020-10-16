@@ -62,7 +62,7 @@ doe_params_dict = {
     'benchmarklog':
         dict(
             game='HalfCheetah-v2',
-            save_interval=int(5e4 / 2048) * 2048,
+            save_interval=int(1e4 / 2048) * 2048,
             log_analyze_stat=True,
         ),
     'lbenchmark':
