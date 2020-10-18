@@ -5,6 +5,7 @@ import sys
 from deep_rl import *
 from importlib import reload
 from dev_doe import doe_continuous
+from run_dac import dac_ppo
 import traceback
 from pymongo import MongoClient
 client = MongoClient('mongodb://localhost:27017')
@@ -18,6 +19,20 @@ def call_job(run_game):
   try:
     kwargs = dict(run=run, params_set=game)
     doe_continuous(**kwargs)
+  except Exception as e:
+    error_col.insert_one({
+        'games_settings': run_game,
+        'error': str(e),
+        'tradeback': str(traceback.format_exc())
+    })
+
+
+def dac_call_job(run_game):
+  print('Start task: ', run_game)
+  run, game, idx = run_game
+  try:
+    kwargs = dict(run=run, params_set=game)
+    dac_ppo(**kwargs)
   except Exception as e:
     error_col.insert_one({
         'games_settings': run_game,
@@ -60,5 +75,6 @@ if __name__ == "__main__":
   run_list = [[4001, game, i] for i in range(12) for game in games]
   with Pool(processes=12) as pool:
     start = time.time()
-    for x in pool.imap(call_job, run_list):
+    # for x in pool.imap(call_job, run_list):
+    for x in pool.imap(dac_call_job, run_list):
       print("(Time elapsed: {}s)".format(int(time.time() - start)))

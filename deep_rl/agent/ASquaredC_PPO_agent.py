@@ -8,6 +8,11 @@ from ..network import *
 from ..component import *
 from .BaseAgent import *
 from skimage import color
+from pymongo import MongoClient
+import traceback
+
+client = MongoClient('mongodb://localhost:27017')
+db = client['sa']
 
 
 # 'hat' is the high-MDP
@@ -31,6 +36,9 @@ class ASquaredCPPOAgent(BaseAgent):
     self.count = 0
 
     self.all_options = []
+    self.exp_col = db[config.log_file_apdx]
+    self.error_col = db[config.log_file_apdx + '_error']
+    self.env = self.task.env.envs[0].env
 
   def compute_pi_hat(self, prediction, prev_option, is_intial_states):
     inter_pi = prediction['inter_pi']
@@ -270,6 +278,30 @@ class ASquaredCPPOAgent(BaseAgent):
 
       states = next_states
       self.total_steps += config.num_workers
+      if config.log_analyze_stat:
+        try:
+          store_dict = {
+              's': states,
+              'r': np.expand_dims(rewards, axis=-1),
+              'm': np.expand_dims(1 - terminals, axis=-1),
+              'init': tensor(terminals).bool().unsqueeze(-1),
+              'at': to_np(actions),
+              'ot': to_np(options),
+              'po_t': to_np(pi_hat),
+              'q_o_st': to_np(prediction['q_o']),
+              'sim_state': self.env.sim.get_state().flatten(),
+          }
+          mongo_dict = {k: store_dict[k].tolist() for k in store_dict}
+          mongo_dict['step'] = self.total_steps
+          self.exp_col.insert_one(mongo_dict)
+        except Exception as e:
+          self.error_col.insert_one({
+              'step': self.total_steps,
+              'error': str(e),
+              'tradeback': str(traceback.format_exc())
+          })
+
+
 
     self.states = states
     prediction = self.network(states)
