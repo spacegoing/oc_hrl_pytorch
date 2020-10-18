@@ -44,25 +44,21 @@ if __name__ == "__main__":
   #   for x in pool.imap(call_job, run_swimmer_list):
   #     print("(Time elapsed: {}s)".format(int(time.time() - start)))
   games = [
-      'ant',
-      'humanoid',
+      'benchmark',
+      'swimmer',
+      'humanoidstandup',
+      'reacher',
+      'walker',
+      'hopper',
       'inverteddoublependulum',
-      'invertedpendulum',
-      'ant4',
-      'humanoid4',
-      'inverteddoublependulum4',
       'invertedpendulum4',
-      # 'benchmark',
-      # 'reacher',
-      # 'humanoidstandup',
-      # 'humanoidstandup4',
-      # 'reacher4',
+      'humanoid4',
+      'ant',
   ]
-  run_list = [[4660, 'benchmarklog', i] for i in range(12)]
-  # run_list += [[4410, 'swimmer4', i] for i in range(12)]
-  # run_list += [[4410, 'hopper4', i] for i in range(12)]
-  run_list += [[4660, game, i] for i in range(12) for game in games]
-  with Pool(processes=18) as pool:
+  games = ['benchmarklog']
+  games = ['antlog', 'humanoidstanduplog']
+  run_list = [[4001, game, i] for i in range(12) for game in games]
+  with Pool(processes=12) as pool:
     start = time.time()
     for x in pool.imap(call_job, run_list):
       print("(Time elapsed: {}s)".format(int(time.time() - start)))
