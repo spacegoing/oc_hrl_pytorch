@@ -74,6 +74,9 @@ if __name__ == "__main__":
   games = ['antlog', 'humanoidstanduplog']
   run_list = [[4001, game, i] for i in range(12) for game in games]
   with Pool(processes=12) as pool:
+  num_proc = 5
+  run_list = [[6025, game, i] for i in range(num_proc) for game in games]
+  with Pool(processes=num_proc) as pool:
     start = time.time()
     # for x in pool.imap(call_job, run_list):
     for x in pool.imap(dac_call_job, run_list):

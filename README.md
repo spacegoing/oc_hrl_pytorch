@@ -5,6 +5,12 @@
 - mujoco-py: install check official github repo
 - baselines: symlink local repo `/home/chli4934/ubCodeLab/baselines/` to `/home/chli4934/anaconda3/lib/python3.8/site-packages/`
 
+## Install dm_control ##
+
+- https://github.com/deepmind/dm_control
+  - install dependencies in rendering: EGL and GLFW
+- pip install dm_control2gym
+
 ## Install Mujoco ##
 
 - Do Not manually install Nvidia Driver. Use `conda install
