@@ -42,8 +42,10 @@ COPY ./mjkey.txt /root/.mujoco/mjpro150/mjkey.txt
 COPY ./mjkey.txt /root/.mujoco/mjpro150/bin/mjkey.txt
 COPY ./mjkey.txt /root/.mujoco/mjpro200_linux/mjkey.txt
 COPY ./mjkey.txt /root/.mujoco/mjpro200_linux/bin/mjkey.txt
-RUN pip install /sa_docker_dependencies/mujoco-py/
+RUN pip install -e /sa_docker_dependencies/mujoco-py/
+RUN pip install -e /sa_docker_dependencies/baselines/
 RUN pip install -e /sa_docker_dependencies/gym/[all]
+RUN pip install -r /sa_docker_dependencies/requirements.txt
 
 WORKDIR /root/
 EXPOSE 27017
