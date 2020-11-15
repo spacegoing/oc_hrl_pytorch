@@ -131,6 +131,52 @@ def set_tasks(config):
   config.game = games[0]
 
 
+def batch_dm(cf):
+  try:
+    games = [
+        'dm-cartpole-b', 'dm-reacher', 'dm-fish', 'dm-cheetah', 'dm-walker-1',
+        'dm-walker-2'
+    ]
+    params = []
+    for game in games:
+      for r in range(10):
+        params.append([
+            ppoc_continuous,
+            dict(game=game, run=r, tasks=True, remark='PPOC')
+        ])
+        params.append([
+            a_squared_c_ppo_continuous,
+            dict(game=game, run=r, tasks=True, remark='ASC-PPO')
+        ])
+        params.append(
+            [oc_continuous,
+             dict(game=game, run=r, tasks=True, remark='OC')])
+        params.append(
+            [ppo_continuous,
+             dict(game=game, run=r, tasks=True, remark='PPO')])
+        params.append([
+            ahp_ppo_continuous,
+            dict(game=game, run=r, tasks=True, remark='AHP')
+        ])
+        params.append([
+            oc_continuous,
+            dict(game=game, run=r, tasks=True, remark='OC', num_workers=4)
+        ])
+        params.append([
+            iopg_continuous,
+            dict(game=game, run=r, tasks=True, remark='IOPG', num_workers=4)
+        ])
+
+    algo, param = params[cf.i]
+    algo(**param)
+  except Exception as e:
+    error_col.insert_one({
+        'error': str(e),
+        'tradeback': str(traceback.format_exc())
+    })
+  exit()
+
+
 # DAC+PPO
 def a_squared_c_ppo_continuous(**kwargs):
   generate_tag(kwargs)
@@ -542,4 +588,5 @@ if __name__ == '__main__':
   set_one_thread()
   select_device(cf.cudaid)
 
-  batch_mujoco(cf)
+  batch_dm(cf)
+  # batch_mujoco(cf)
