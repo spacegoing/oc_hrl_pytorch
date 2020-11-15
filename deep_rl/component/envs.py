@@ -14,6 +14,7 @@ from gym.spaces.discrete import Discrete
 from baselines.common.atari_wrappers import make_atari, wrap_deepmind
 from baselines.common.atari_wrappers import FrameStack as FrameStack_
 from baselines.common.vec_env.subproc_vec_env import SubprocVecEnv, VecEnv
+import dmc2gym
 
 from ..utils import *
 
@@ -27,18 +28,18 @@ except ImportError:
 def make_env(env_id, seed, rank, episode_life=True):
 
   def _thunk():
-    random_seed(seed)
+    local_seed = seed + rank
+    random_seed(local_seed)
     if env_id.startswith("dm"):
-      import dm_control2gym
       _, domain, task = env_id.split('-')
-      env = dm_control2gym.make(domain_name=domain, task_name=task)
+      env = dmc2gym.make(domain_name=domain, task_name=task, seed=local_seed)
     else:
       env = gym.make(env_id)
     is_atari = hasattr(gym.envs, 'atari') and isinstance(
         env.unwrapped, gym.envs.atari.atari_env.AtariEnv)
     if is_atari:
       env = make_atari(env_id)
-    env.seed(seed + rank)
+    env.seed(local_seed)
     env = OriginalReturnWrapper(env)
     if is_atari:
       env = wrap_deepmind(
@@ -62,15 +63,22 @@ class OriginalReturnWrapper(gym.Wrapper):
   def __init__(self, env):
     gym.Wrapper.__init__(self, env)
     self.total_rewards = 0
+    self.epi_steps = 0
 
   def step(self, action):
     obs, reward, done, info = self.env.step(action)
     self.total_rewards += reward
+    self.epi_steps += 1
     if done:
       info['episodic_return'] = self.total_rewards
+      info['avg_episodic_return'] = self.total_rewards / self.epi_steps
+      info['epi_steps'] = self.epi_steps
       self.total_rewards = 0
+      self.epi_steps = 0
     else:
       info['episodic_return'] = None
+      info['avg_episodic_return'] = None
+      info['epi_steps'] = None
     return obs, reward, done, info
 
   def reset(self):
@@ -197,9 +205,12 @@ class Task:
                single_process=True,
                log_dir=None,
                episode_life=True,
-               seed=np.random.randint(int(1e5))):
+               seed=None):
     if log_dir is not None:
       mkdir(log_dir)
+    if not seed:
+      np.random.seed()
+      seed = np.random.randint(int(1e6))
     envs = [make_env(name, seed, i, episode_life) for i in range(num_envs)]
     if single_process:
       Wrapper = DummyVecEnv

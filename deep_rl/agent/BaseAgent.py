@@ -67,11 +67,16 @@ class BaseAgent:
   def record_online_return(self, info, offset=0):
     if isinstance(info, dict):
       ret = info['episodic_return']
+      avg_ret = info['avg_episodic_return']
+      epi_steps = info['epi_steps']
       if ret is not None:
         self.logger.add_scalar('episodic_return_train', ret,
                                self.total_steps + offset)
-        self.logger.info('steps %d, episodic_return_train %s' %
-                         (self.total_steps + offset, ret))
+        self.logger.add_scalar('avg_episodic_return_train', avg_ret,
+                               self.total_steps + offset)
+        self.logger.info(
+            'steps %d, episodic_return %s, episode steps %d, step_avg %.4f' %
+            (self.total_steps + offset, ret, epi_steps, avg_ret))
     elif isinstance(info, tuple):
       for i, info_ in enumerate(info):
         self.record_online_return(info_, i)

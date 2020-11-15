@@ -7,11 +7,14 @@
 # baseline on tf2 branch: https://github.com/openai/baselines/tree/tf2
 opencv-python
 tensorboardX
-atari-py==0.1.7
-scikit-image==0.14.2
-tqdm==4.31.1
-pathlib==1.0.1
+atari-py==0.2.6
+tqdm
+pathlib
 pymongo
 ipdb
-dm_control
-git+https://github.com/ShangtongZhang/dm_control2gym.git@scalar_fix
+
+# Transfer Learning DM-Suite:
+dm-control==0.0.322773188
+git+git://github.com/denisyarats/dmc2gym.git
+# git+git://github.com/deepmind/dm_control.git@1038345fa347165b7e29fa677824b2e9ee87762f
+# git+https://github.com/ShangtongZhang/dm_control2gym.git@scalar_fix

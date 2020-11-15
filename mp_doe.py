@@ -2,11 +2,12 @@ from multiprocessing import Pool
 import subprocess
 import time
 import sys
+import traceback
+import os
 from deep_rl import *
 from importlib import reload
 from dev_doe import doe_continuous
 from run_dac import dac_ppo
-import traceback
 from pymongo import MongoClient
 client = MongoClient('mongodb://localhost:27017')
 db = client['sa']
@@ -45,6 +46,7 @@ if __name__ == "__main__":
   random_seed()
   set_one_thread()
   select_device(-1)
+  num_proc = 5
   # run_walker_list = [[4410, 'walkerlog', i] for i in range(12)]
   # run_walker_list += [[4410, 'benchmarklog', i] for i in range(12)]
   # with Pool(processes=17) as pool:
@@ -72,12 +74,10 @@ if __name__ == "__main__":
   ]
   games = ['benchmarklog']
   games = ['antlog', 'humanoidstanduplog']
-  run_list = [[4001, game, i] for i in range(12) for game in games]
-  with Pool(processes=12) as pool:
-  num_proc = 5
-  run_list = [[6025, game, i] for i in range(num_proc) for game in games]
+  games = ['t_walker2']
+  run_list = [[60001, game, i] for i in range(num_proc) for game in games]
   with Pool(processes=num_proc) as pool:
     start = time.time()
-    # for x in pool.imap(call_job, run_list):
-    for x in pool.imap(dac_call_job, run_list):
+    for x in pool.imap(call_job, run_list):
+    # for x in pool.imap(dac_call_job, run_list):
       print("(Time elapsed: {}s)".format(int(time.time() - start)))

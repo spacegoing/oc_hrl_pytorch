@@ -685,7 +685,11 @@ class DoeContiOneOptionNet(BaseNet):
     self.action_dim = action_dim
     self.to(Config.DEVICE)
 
-  def forward(self, obs, prev_options, initial_state_flags):
+  def forward(self,
+              obs,
+              prev_options,
+              initial_state_flags,
+              task_switch_flag=False):
     '''
     Naming Conventions:
     1. num_workers: batch_size
@@ -789,6 +793,9 @@ class DoeContiOneOptionNet(BaseNet):
                .squeeze(-1)] -= self.config.delib * torch.abs(q_o_st).mean()
     q_o_st = q_o_st + delib_cost
 
+    if task_switch_flag:
+      po_t = po_t.detach()
+      po_t_log = po_t_log.detach()
     return {
         'po_t': po_t,
         'po_t_log': po_t_log,

@@ -40,6 +40,7 @@ class DoeAgent(BaseAgent):
     self.logallsteps_storage = []
     self.record_storage_list = []
     self.env = self.task.env.envs[0].env
+    self.task_switch_flag = False
 
   def _option_clip_schedular(self):
     return self.config.ppo_ratio_clip_option_max - (
@@ -177,7 +178,8 @@ class DoeAgent(BaseAgent):
           sampled_prev_options = prev_options[batch_indices]
           sampled_initial_flags = init[batch_indices]
           prediction = self.network(sampled_states, sampled_prev_options,
-                                    sampled_initial_flags)
+                                    sampled_initial_flags,
+                                    self.task_switch_flag)
 
           misc = dict()
           if name == 'a':
@@ -220,7 +222,8 @@ class DoeAgent(BaseAgent):
     with torch.no_grad():
       for _ in range(config.rollout_length):
         prediction = self.network(states, self.prev_options,
-                                  self.initial_state_flags)
+                                  self.initial_state_flags,
+                                  self.task_switch_flag)
 
         # mean/std: [num_workers, action_dim]
         pat_mean = prediction['pat_mean']
@@ -291,7 +294,7 @@ class DoeAgent(BaseAgent):
       self.states = states
       # add T+1 step
       prediction = self.network(states, self.prev_options,
-                                self.initial_state_flags)
+                                self.initial_state_flags, self.task_switch_flag)
       storage.add(prediction)
       # padding storage
       storage.placeholder()
@@ -301,6 +304,8 @@ class DoeAgent(BaseAgent):
     storage = Storage(config.rollout_length,
                       ['a_adv', 'o_adv', 'a_ret', 'o_ret'])
     states = self.states
+    if self.task_ind > 0:
+      self.task_switch_flag = True
     self.rollout(storage, config, states)
     self.compute_adv(storage)
     self.learn(storage)

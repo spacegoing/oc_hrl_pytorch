@@ -147,26 +147,72 @@ doe_params_dict = {
         'game': 'InvertedPendulum-v2',
         'num_workers': 1
     },
-    'dm_cartpole':
-        dict(game='dm-cartpole-balance'),
-    'dm_reacher':
-        dict(game='dm-reacher-easy'),
-    'dm_fish':
-        dict(game='dm-fish-upright'),
-    'dm_cheetah':
-        dict(game='dm-cheetah-run'),
-    'dm_walker1':
-        dict(game='dm-walker-squat'),
-    't_cartpole':
-        dict(game='dm-cartpole-b', tasks=True),
-    't_reacher':
-        dict(game='dm-reacher', tasks=True),
-    't_fish':
-        dict(game='dm-fish', tasks=True),
-    't_cheetah':
-        dict(game='dm-cheetah', tasks=True),
-    't_walker1':
-        dict(game='dm-walker-1', tasks=True),
-    't_walker2':
-        dict(game='dm-walker-2', tasks=True),
+    'dmtcartpole':
+        dict(
+            game='dm-cartpole-b',
+            tasks=True,
+            max_steps=2e6,
+            num_workers=4,
+            dmodel=20),
+    'dmtreacher':
+        dict(
+            game='dm-reacher',
+            tasks=True,
+            max_steps=2e6,
+            num_workers=4,
+            dmodel=20),
+    'dmtfish':
+        dict(
+            game='dm-fish', tasks=True, max_steps=2e6, num_workers=4,
+            dmodel=20),
+    'dmtcheetah':
+        dict(
+            game='dm-cheetah',
+            tasks=True,
+            max_steps=2e6,
+            num_workers=4,
+            dmodel=20),
+    'dmtwalker':
+        dict(
+            game='dm-walker',
+            tasks=True,
+            max_steps=2e6,
+            num_workers=4,
+            dmodel=20),
+    'dmtwalker1':
+        dict(
+            game='dm-walker-1',
+            tasks=True,
+            max_steps=2e6,
+            num_workers=4,
+            dmodel=20),
+    'dmtwalker2':
+        dict(
+            game='dm-walker-2',
+            tasks=True,
+            max_steps=2e6,
+            num_workers=4,
+            dmodel=20),
+    'dmwalker2_s':
+        dict(
+            game='dm-walker-2',
+            tasks=True,
+            max_steps=2e6,
+            num_workers=4,
+            dmodel=20),
+    'dmwalker2_m':
+        dict(
+            game='dm-walker-2',
+            tasks=True,
+            max_steps=2e6,
+            num_workers=4,
+            dmodel=30),
+    'dmwalker2_l':
+        dict(
+            game='dm-walker-2',
+            tasks=True,
+            max_steps=2e6,
+            num_workers=4,
+            dmodel=60,
+            nhid=80),
 }
