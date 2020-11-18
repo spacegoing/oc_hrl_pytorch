@@ -13,8 +13,6 @@ def set_tasks(config):
   elif config.game == 'dm-walker-2':
     tasks = ['walk', 'backward']
     config.game = 'dm-walker'
-  elif config.game == 'dm-finger':
-    tasks = ['turn_easy', 'turn_hard']
   elif config.game == 'dm-reacher':
     tasks = ['easy', 'hard']
   elif config.game == 'dm-cartpole-b':
@@ -25,14 +23,28 @@ def set_tasks(config):
     config.game = 'dm-cartpole'
   elif config.game == 'dm-fish':
     tasks = ['upright', 'downleft']
+  elif config.game == 'dm-cheetah':
+    tasks = ['run', 'backward']
   elif config.game == 'dm-hopper':
     tasks = ['stand', 'hop']
   elif config.game == 'dm-acrobot':
     tasks = ['swingup', 'swingup_sparse']
+  elif config.game == 'dm-finger':
+    tasks = ['turn_easy', 'turn_hard']
+  elif config.game == 'dm-humanoid-w':
+    config.game = 'dm-humanoid'
+    tasks = ['stand', 'walk']
+  elif config.game == 'dm-humanoid-r':
+    config.game = 'dm-humanoid'
+    tasks = ['stand', 'run']
   elif config.game == 'dm-manipulator':
     tasks = ['bring_ball', 'bring_peg']
-  elif config.game == 'dm-cheetah':
-    tasks = ['run', 'backward']
+  elif config.game == 'dm-quadruped':
+    tasks = ['walk', 'run']
+  elif config.game == 'dm-stacker':
+    tasks = ['stack_2', 'stack_4']
+  elif config.game == 'dm-swimmer':
+    tasks = ['swimmer6', 'swimmer15']
   else:
     raise NotImplementedError
 
@@ -263,8 +275,12 @@ if __name__ == "__main__":
   # 2. cosine similarity works for short dmodel.
   #    large dmodel unlikely to entangle and converges
   #    faster without cosine similarity
-  cf.params_set = 'walker'
-  cf.run = 4410
+  a = [
+      'dm-hopper', 'dm-acrobot', 'dm-finger', 'dm-humanoid-w', 'dm-humanoid-r',
+      'dm-manipulator', 'dm-quadruped', 'dm-stacker', 'dm-swimmer'
+  ]
+  cf.params_set = a[8]
+  cf.run = 1024
   # DOE
   kwargs = dict(run=cf.run, params_set=cf.params_set)
   doe_continuous(**kwargs)

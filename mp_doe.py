@@ -46,7 +46,8 @@ if __name__ == "__main__":
   random_seed()
   set_one_thread()
   select_device(-1)
-  num_proc = 5
+  num_proc = 19
+  num_run = 12
   # run_walker_list = [[4410, 'walkerlog', i] for i in range(12)]
   # run_walker_list += [[4410, 'benchmarklog', i] for i in range(12)]
   # with Pool(processes=17) as pool:
@@ -75,9 +76,23 @@ if __name__ == "__main__":
   games = ['benchmarklog']
   games = ['antlog', 'humanoidstanduplog']
   games = ['t_walker2']
-  run_list = [[60001, game, i] for i in range(num_proc) for game in games]
+  games = ['dmwalker2_s']  # 6081; 6000
+  games = ['dmwalker2_l']  # 6091
+  games = [
+      'dmwalker2_s', 'dmtcartpole', 'dmtreacher', 'dmtfish', 'dmtcheetah',
+      'dmtwalker1'
+  ]
+  # num_worker=1 dm=20 6500
+  # num_worker=4 dm=20 6504; dm=30 6534
+  # num_worker=4 dm=20 4024 fix embed but not P_o
+  # cartpole 20>+30; reacher 30; cheetah 20 > +30; fish 20; walker1 20+30<; walker2 30
+  # games = [
+  #     'dm-hopper', 'dm-acrobot', 'dm-finger', 'dm-humanoid-w', 'dm-humanoid-r',
+  #     'dm-manipulator', 'dm-quadruped', 'dm-stacker', 'dm-swimmer'
+  # ]
+  run_list = [[4024, game, i] for game in games for i in range(num_run)]
   with Pool(processes=num_proc) as pool:
     start = time.time()
     for x in pool.imap(call_job, run_list):
-    # for x in pool.imap(dac_call_job, run_list):
+      # for x in pool.imap(dac_call_job, run_list):
       print("(Time elapsed: {}s)".format(int(time.time() - start)))

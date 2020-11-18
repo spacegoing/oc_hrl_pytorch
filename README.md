@@ -4,11 +4,15 @@
 - MongoDB: `docker run --name mg -v /home/chli4934/ubCodeLab/volumeb3_data:/data -p 27017:27017 -itd mongo`
 - mujoco-py: install check official github repo
 - baselines: symlink local repo `/home/chli4934/ubCodeLab/baselines/` to `/home/chli4934/anaconda3/lib/python3.8/site-packages/`
-
+- For plotting, on ubuntu install latex by: `sudo apt install
+  texlive-latex-extra texlive-fonts-recommended dvipng cm-super`
+  
 ## Install dm_control ##
 
 - https://github.com/deepmind/dm_control
   - install dependencies in rendering: EGL and GLFW
+  - setting the `MUJOCO_GL=` environment variable to 'glfw',
+    'egl', or 'osmesa'.
 - pip install dm_control2gym
 
 ## Install Mujoco ##
