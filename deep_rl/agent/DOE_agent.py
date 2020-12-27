@@ -306,6 +306,7 @@ class DoeAgent(BaseAgent):
     states = self.states
     if self.task_ind > 0:
       self.task_switch_flag = True
+      self.network.embed_option.requires_grad_(False)
     self.rollout(storage, config, states)
     self.compute_adv(storage)
     self.learn(storage)

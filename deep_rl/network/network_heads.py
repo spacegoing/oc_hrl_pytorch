@@ -793,9 +793,9 @@ class DoeContiOneOptionNet(BaseNet):
                .squeeze(-1)] -= self.config.delib * torch.abs(q_o_st).mean()
     q_o_st = q_o_st + delib_cost
 
-    if task_switch_flag:
-      po_t = po_t.detach()
-      po_t_log = po_t_log.detach()
+    # if task_switch_flag:
+    #   po_t = po_t.detach()
+    #   po_t_log = po_t_log.detach()
     return {
         'po_t': po_t,
         'po_t_log': po_t_log,
