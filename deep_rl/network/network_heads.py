@@ -775,10 +775,10 @@ class DoeContiOneOptionNet(BaseNet):
     obs_cat = torch.cat([obs, ot], dim=-1)
     # obs_hat: \tilde{S}_t [1, num_workers, dmodel]
     # obs_hat = self.act_concat_norm(obs_cat)
-    obs_hat = obs_cat
+    obs_hat_a = obs_cat
 
     # generate batch inputs for each option
-    pat_mean, pat_std = self.act_doe(obs_hat)
+    pat_mean, pat_std = self.act_doe(obs_hat_a)
 
     ## beginning of value fn
     # obs_hat: [num_workers, state_dim + dmodel]
