@@ -680,6 +680,7 @@ class DoeContiOneOptionNet(BaseNet):
     critic_dim = state_dim + dmodel
     self.q_concat_norm = nn.LayerNorm(critic_dim)
     self.q_o_st = DoeCriticNet(critic_dim, num_options, config.hidden_units)
+    self.v_logtis_lc = layer_init(nn.Linear(2 * dmodel, num_options))
 
     self.num_options = num_options
     self.action_dim = action_dim
@@ -781,17 +782,34 @@ class DoeContiOneOptionNet(BaseNet):
     pat_mean, pat_std = self.act_doe(obs_hat_a)
 
     ## beginning of value fn
-    # obs_hat: [num_workers, state_dim + dmodel]
-    obs_cat = torch.cat([obs, ot], dim=-1)
-    # obs_hat: [num_workers, state_dim + dmodel]
-    obs_hat = self.q_concat_norm(obs_cat)
-    q_o_st = self.q_o_st(obs_hat)
-    # Add delib cost
-    delib_cost = torch.zeros_like(q_o_st)
-    delib_cost[range_tensor(q_o_st.shape[0]),
-               prev_options
-               .squeeze(-1)] -= self.config.delib * torch.abs(q_o_st).mean()
-    q_o_st = q_o_st + delib_cost
+    # # FFN Version
+    # # obs_hat: [num_workers, state_dim + dmodel]
+    # obs_cat = torch.cat([obs, ot], dim=-1)
+    # # obs_hat: [num_workers, state_dim + dmodel]
+    # obs_hat = self.q_concat_norm(obs_cat)
+    # q_o_st = self.q_o_st(obs_hat)
+    # # Add delib cost
+    # delib_cost = torch.zeros_like(q_o_st)
+    # delib_cost[range_tensor(q_o_st.shape[0]),
+    #            prev_options
+    #            .squeeze(-1)] -= self.config.delib * torch.abs(q_o_st).mean()
+    # q_o_st = q_o_st + delib_cost
+
+    # Attn Version
+    wt = self.embed_option(embed_all_idx)
+    # obs_cat: \tilde{S}_{t-1} [2, num_workers, dmodel]
+    obs_cat = torch.cat([obs_hat.unsqueeze(0), ot.unsqueeze(0)], dim=0)
+    # transformer outputs
+    # dt: [2, num_workers, dmodel] [0]: mha_st; [1]: mha_ot
+    rdt = self.doe(wt, obs_cat)
+    # dt: [num_workers, dmodel(st)+dmodel(o_{t-1})]
+    dt = torch.cat([rdt[0].squeeze(0), rdt[1].squeeze(0)], dim=-1)
+    if dt.dim() < 2:
+      dt = dt.unsqueeze(0)
+    # q_o_st: [num_workers, num_options]
+    # todo: detach value fn from doe head; only train Linear
+    # dt = dt.detach()
+    q_o_st = self.v_logtis_lc(dt)
 
     # if task_switch_flag:
     #   po_t = po_t.detach()
