@@ -162,8 +162,8 @@ if __name__ == "__main__":
   # 2. cosine similarity works for short dmodel.
   #    large dmodel unlikely to entangle and converges
   #    faster without cosine similarity
-  cf.params_set = 'benchmarklog'
-  cf.run = 4000
+  cf.params_set = 'dmwalker2_l'
+  cf.run = 6201
   # DOE
   kwargs = dict(run=cf.run, params_set=cf.params_set)
   dac_ppo(**kwargs)

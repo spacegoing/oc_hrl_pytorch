@@ -279,8 +279,10 @@ if __name__ == "__main__":
       'dm-hopper', 'dm-acrobot', 'dm-finger', 'dm-humanoid-w', 'dm-humanoid-r',
       'dm-manipulator', 'dm-quadruped', 'dm-stacker', 'dm-swimmer'
   ]
-  cf.params_set = a[8]
-  cf.run = 1024
+  cf.params_set = 'benchmark'
+  # 2220: V: attn detached dt
+  # 2221: V: attn and dt
+  cf.run = 2220
   # DOE
   kwargs = dict(run=cf.run, params_set=cf.params_set)
   doe_continuous(**kwargs)

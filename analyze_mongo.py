@@ -17,13 +17,13 @@ db = client['sa']
 # nm = 'HalfCheetah-v2-params_set_benchmarklog-remark_Param_benchmarklog_Net_nhead1_dm40_nl1_nhid50_nO_4-run-4660-201017-012352-66'
 nm = 'HalfCheetah-v2-params_set_benchmarklog-remark_Param_benchmarklog_Net_nhead1_dm40_nl1_nhid50_nO_4-run-4660-201017-012353-347'
 # HumanoidStandup
-nm = 'HumanoidStandup-v2-params_set_humanoidstanduplog-remark_Param_humanoidstanduplog_Net_nhead1_dm40_nl1_nhid50_nO_4-run-4000-201018-182123-513'
-# nm = 'HumanoidStandup-v2-params_set_humanoidstanduplog-remark_Param_humanoidstanduplog_Net_nhead1_dm40_nl1_nhid50_nO_4-run-4000-201018-182123-456'
-# Ant
-nm = 'Ant-v2-params_set_antlog-remark_Param_antlog_Net_nhead1_dm40_nl1_nhid50_nO_4-run-4000-201018-182123-835'
-nm = 'Ant-v2-params_set_antlog-remark_Param_antlog_Net_nhead1_dm40_nl1_nhid50_nO_4-run-4000-201018-182123-367'
-# 4002
-nm = 'HumanoidStandup-v2-params_set_humanoidstanduplog-remark_Param_humanoidstanduplog_Net_nhead1_dm40_nl1_nhid50_nO_4-run-4002-201019-230420-859'
+# nm = 'HumanoidStandup-v2-params_set_humanoidstanduplog-remark_Param_humanoidstanduplog_Net_nhead1_dm40_nl1_nhid50_nO_4-run-4000-201018-182123-513'
+# # nm = 'HumanoidStandup-v2-params_set_humanoidstanduplog-remark_Param_humanoidstanduplog_Net_nhead1_dm40_nl1_nhid50_nO_4-run-4000-201018-182123-456'
+# # Ant
+# nm = 'Ant-v2-params_set_antlog-remark_Param_antlog_Net_nhead1_dm40_nl1_nhid50_nO_4-run-4000-201018-182123-835'
+# nm = 'Ant-v2-params_set_antlog-remark_Param_antlog_Net_nhead1_dm40_nl1_nhid50_nO_4-run-4000-201018-182123-367'
+# # 4002
+# nm = 'HumanoidStandup-v2-params_set_humanoidstanduplog-remark_Param_humanoidstanduplog_Net_nhead1_dm40_nl1_nhid50_nO_4-run-4002-201019-230420-859'
 col = db[nm]
 
 num_workers = 4
@@ -167,10 +167,10 @@ def plot_duration():
   epi_reward_ser = comp_episodic_reward(epi_idx_list, r_ser)
   epi_avg_mat = comp_episodic_duration(epi_idx_list, ot_ser)
 
-  episode_idx = 3400
+  episode_idx = 258
   game = 'HalfCheetah-v2'
-  game = 'Ant-v2'
-  game = 'HumanoidStandup-v2'
+  # game = 'Ant-v2'
+  # game = 'HumanoidStandup-v2'
   viz_episode(episode_idx, game, epi_idx_list, sim_state_mat, ot_ser)
 
   be = 200
