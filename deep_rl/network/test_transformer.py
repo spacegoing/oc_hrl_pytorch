@@ -6,6 +6,8 @@ import torchtext
 from torchtext.data.utils import get_tokenizer
 from torch.nn import TransformerEncoder, TransformerEncoderLayer, TransformerDecoder, TransformerDecoderLayer, LayerNorm, Transformer
 
+debug_flag = False
+
 
 class PositionalEncoding(nn.Module):
 
@@ -13,14 +15,14 @@ class PositionalEncoding(nn.Module):
     super(PositionalEncoding, self).__init__()
     self.dropout = nn.Dropout(p=dropout)
 
-    pe = torch.zeros(max_len, d_model)
-    position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
-    div_term = torch.exp(
-        torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
-    pe[:, 0::2] = torch.sin(position * div_term)
-    pe[:, 1::2] = torch.cos(position * div_term)
-    pe = pe.unsqueeze(0).transpose(0, 1)
-    self.register_buffer('pe', pe)
+    self.pe = nn.Parameter(torch.zeros(max_len, 1, d_model))
+    # position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+    # div_term = torch.exp(
+    #     torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
+    # pe[:, 0::2] = torch.sin(position * div_term)
+    # pe[:, 1::2] = torch.cos(position * div_term)
+    # pe = pe.unsqueeze(0).transpose(0, 1)
+    # self.register_buffer('pe', pe)
 
   def forward(self, x):
     x = x + self.pe[:x.size(0), :]
@@ -85,7 +87,10 @@ class TransformerModel(nn.Module):
     src_mask, tgt_mask, memory_mask = self.get_all_masks(
         src_seq_len, tgt_seq_len, device)
 
-    import ipdb; ipdb.set_trace(context=7)
+    if debug_flag == True:
+      import ipdb
+      ipdb.set_trace(context=7)
+
     es = self.embed_src(src)
     src = self.embed_src(src) * math.sqrt(self.ninp)
     src = self.pos_encoder(src)
@@ -116,7 +121,9 @@ TEXT = torchtext.data.Field(
     lower=True)
 train_txt, val_txt, test_txt = torchtext.datasets.WikiText2.splits(TEXT)
 TEXT.build_vocab(train_txt)
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:2")
+# device = torch.device("cpu")
 
 
 def batchify(data, bsz):
@@ -169,6 +176,9 @@ def train():
   start_time = time.time()
   ntokens = len(TEXT.vocab.stoi)
   for batch, i in enumerate(range(0, train_data.size(0) - 1, bptt)):
+    if debug_flag == True:
+      import ipdb
+      ipdb.set_trace(context=7)
     data, targets = get_batch(train_data, i)
     optimizer.zero_grad()
     output = model(data, data)
