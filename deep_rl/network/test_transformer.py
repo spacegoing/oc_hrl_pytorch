@@ -12,10 +12,17 @@ debug_flag = False
 class PositionalEncoding(nn.Module):
 
   def __init__(self, d_model, dropout=0.1, max_len=5000):
+    '''
+      d_model=20; dropout=0.1; max_len=50
+    '''
     super(PositionalEncoding, self).__init__()
     self.dropout = nn.Dropout(p=dropout)
 
     self.pe = nn.Parameter(torch.zeros(max_len, 1, d_model))
+    nn.init.normal_(self.pe)
+
+    # # Old Block ---------------------------
+    # self.pe = nn.Parameter(torch.zeros(max_len, 1, d_model))
     # position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
     # div_term = torch.exp(
     #     torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
@@ -25,6 +32,7 @@ class PositionalEncoding(nn.Module):
     # self.register_buffer('pe', pe)
 
   def forward(self, x):
+    if debug_flag == True: import ipdb; ipdb.set_trace(context=7)
     x = x + self.pe[:x.size(0), :]
     return self.dropout(x)
 
@@ -49,7 +57,7 @@ class TransformerModel(nn.Module):
     decoder_norm = LayerNorm(ninp)
     self.transformer_decoder = TransformerDecoder(decoder_layers, nlayers,
                                                   decoder_norm)
-    self.transformer = Transformer(ninp, nhead, nlayers, nlayers, nhid, dropout)
+    # self.transformer = Transformer(ninp, nhead, nlayers, nlayers, nhid, dropout)
     self.logits = nn.Linear(ninp, ntoken)
 
     self.init_weights()
@@ -106,9 +114,9 @@ class TransformerModel(nn.Module):
         tgt, memory, tgt_mask=tgt_mask, memory_mask=memory_mask)
     # output = output.permute(1, 0, 2)
 
-    # use pytorch transformer module
-    output = self.transformer(
-        src, tgt, src_mask=src_mask, memory_mask=memory_mask, tgt_mask=tgt_mask)
+    # # use pytorch transformer module
+    # output = self.transformer(
+    #     src, tgt, src_mask=src_mask, memory_mask=memory_mask, tgt_mask=tgt_mask)
 
     output = self.logits(output)
     return output
@@ -122,7 +130,7 @@ TEXT = torchtext.data.Field(
 train_txt, val_txt, test_txt = torchtext.datasets.WikiText2.splits(TEXT)
 TEXT.build_vocab(train_txt)
 # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-device = torch.device("cuda:2")
+device = torch.device("cuda:4")
 # device = torch.device("cpu")
 
 
