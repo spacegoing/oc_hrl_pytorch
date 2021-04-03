@@ -214,4 +214,4 @@ class Storage:
     '''
           width: window_length
     '''
-    return torch.cat(getattr(self, key), dim=1)
+    return torch.cat(getattr(self, key)[:self.size], dim=1)

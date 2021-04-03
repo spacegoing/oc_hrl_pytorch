@@ -327,6 +327,14 @@ class WsaAgent(BaseAgent):
       storage.add(prediction)
       # padding storage
       storage.placeholder()
+      # in storage implementation self.size = config.rollout_length
+      # when storage.cat(keys), samples added later than self.size will
+      # not be retrieved:
+      # def cat(self, keys):
+      #   data = [getattr(self, k)[:self.size] for k in keys]
+      #   return map(lambda x: torch.cat(x, dim=0), data)
+
+
 
   def step(self):
     config = self.config
