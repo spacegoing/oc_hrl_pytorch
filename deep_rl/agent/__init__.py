@@ -13,3 +13,4 @@ from .IOPG_agent import *
 from .OC_agent import *
 from .PPOC_agent import *
 from .DOE_agent import *
+from .WSA_agent import *

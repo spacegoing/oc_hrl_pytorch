@@ -43,6 +43,10 @@ def basic_doe_params():
   config.cos_w = 0.0
   config.delib = 0.0
 
+  # WSA Train
+  config.max_lag = int(5e3)
+  config.skill_lag = 10
+
   # MISC
   config.num_workers = 4
   config.log_interval = config.rollout_length * config.num_workers
