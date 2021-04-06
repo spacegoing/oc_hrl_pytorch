@@ -5,7 +5,6 @@
 #######################################################################
 from .network_utils import *
 from .network_bodies import *
-from .network_heads import *
 import math
 
 debug_flag = False
@@ -159,6 +158,23 @@ class WsaFFN(BaseNet):
     return obs
 
 
+class WsaActionNet(BaseNet):
+
+  def __init__(self, concat_dim, action_dim, hidden_units=(64, 64)):
+    super().__init__()
+    self.decoder = WsaFFN(concat_dim, hidden_units)
+    self.mean_fc = layer_init(nn.Linear(self.decoder.out_dim, action_dim), 1e-3)
+    self.std_fc = layer_init(nn.Linear(self.decoder.out_dim, action_dim), 1e-3)
+
+  def forward(self, obs):
+    # obs: [num_workers, dmodel+state_dim]
+    out = self.decoder(obs)
+    # obs: [num_workers, hidden_units[-1]]
+    mean = torch.tanh(self.mean_fc(out))
+    std = F.softplus(self.std_fc(out))
+    return mean, std
+
+
 class WsaNet(BaseNet):
 
   def __init__(self,
@@ -197,39 +213,26 @@ class WsaNet(BaseNet):
     self.init_po_ffn = WsaFFN(state_dim, hidden_units=(64, num_options))
 
     #w decoder P(O_t|S_t,O_{t-1...k})
-    self.skill_decoder = SkillDecoder(dmodel, nhead, nhid, nlayers, dropout=0)
     # todo: other implementation?
     self.skill_decoder_lc = layer_init(nn.Linear(dmodel, 1))
-
-    # decoder P(O_t|S_t,O_{t-1})
-    # self.doe = DoeSkillDecoderNet(dmodel, nhead, nlayers, nhid, dropout)
-    # decoder P(O_t|S_t,O_{t-1})
     self.de_state_lc = layer_init(nn.Linear(state_dim, dmodel))
     self.de_state_norm = nn.LayerNorm(dmodel)
-    self.de_logtis_lc = layer_init(nn.Linear(2 * dmodel, num_options))
-    self.doe = SkillPolicy(dmodel, nhead, nlayers, nhid, dropout)
-    # self.skill_policy = SkillPolicy(num_options, state_dim, dmodel, nhead,
-    #                                 nlayers, nhid)
+    self.skill_decoder = SkillDecoder(dmodel, nhead, nhid, nlayers, dropout=0)
 
     ## Primary Action
+    # todo: no concat but +;
     concat_dim = state_dim + dmodel
     self.act_concat_norm = nn.LayerNorm(concat_dim)
     self.single_transformer_action_net = config.single_transformer_action_net
-    self.act_doe = DoeSingleTransActionNet(
+    self.act_decoder = WsaActionNet(
         concat_dim, action_dim, hidden_units=config.hidden_units)
 
     ## Critic Nets
-    critic_dim = state_dim + dmodel
-    self.q_concat_norm = nn.LayerNorm(critic_dim)
-    self.q_o_st = DoeCriticNet(critic_dim, num_options, config.hidden_units)
-    self.v_logtis_lc = layer_init(nn.Linear(2 * dmodel, num_options))
-
     # todo: whether share encoder with skill?
     # skill Q-value embedding
-    num_embed = num_options + 1  # one extra for padding
-    self.embed_qso = nn.Embedding(num_embed, dmodel)
-    nn.init.orthogonal_(self.embed_qso.weight)
-
+    # num_embed = num_options + 1  # one extra for padding
+    # self.embed_qso = nn.Embedding(num_embed, dmodel)
+    # nn.init.orthogonal_(self.embed_qso.weight)
     self.qso_encoder = SkillEncoder(
         dmodel, nhead, nhid, nlayers, config.rollout_length + 1, dropout=0)
     self.qso_lc = layer_init(nn.Linear(dmodel, 1))
@@ -240,10 +243,9 @@ class WsaNet(BaseNet):
 
   def forward(self,
               obs,
-              prev_options,
+              skill_lag_mat,
               initial_state_flags,
-              task_switch_flag=False,
-              skill_lag_mat=None):
+              task_switch_flag=False):
     '''
     Naming Conventions:
     1. num_workers: batch_size
@@ -259,10 +261,9 @@ class WsaNet(BaseNet):
         obs: config.state_normalizer = MeanStdNormalizer()
     Params:
         obs: [num_workers, state_dim]
-        prev_options: [num_workers, 1]
-        initial_state_flags: [num_workers, 1]
         skill_lag_mat: [num_workers, config.skill_lag].
                        self.config.padding_mask_token for padding positions
+        initial_state_flags: [num_workers, 1]
 
     Returns:
         po_t: [num_workers, num_options]
@@ -312,21 +313,6 @@ class WsaNet(BaseNet):
     # po_t_logits: [num_workers, num_o] = [N, T, 1] in pytorch
     po_t_logits = self.skill_decoder_lc(ot_tilde.transpose(0, 1)).squeeze(-1)
 
-    # #o
-    # # dt: [2, num_workers, dmodel] [0]: mha_st; [1]: mha_ot_1
-    # rdt = self.doe(wt, obs_cat_1)
-    # # dt: [num_workers, dmodel(st)+dmodel(o_{t-1})]
-    # dt = torch.cat([rdt[0].squeeze(0), rdt[1].squeeze(0)], dim=-1)
-    # if dt.dim() < 2:
-    #   dt = dt.unsqueeze(0)
-    # # po_t_logits/po_t/po_t_log: [num_workers, num_options]
-    # if debug_flag == True:
-    #   if not skill_padding_mask[:, -1].all():
-    #     import ipdb
-    #     ipdb.set_trace(context=7)
-    # po_t_logits = self.de_logtis_lc(dt)
-    # # po_t_logits = self.skill_policy(obs.unsqueeze(0), ot_1, wt).squeeze(0)
-
     # handle initial state
     if initial_state_flags.any():
       if initial_state_flags.dim() > 1:
@@ -352,7 +338,7 @@ class WsaNet(BaseNet):
     obs_hat_a = obs_cat
 
     # generate batch inputs for each option
-    pat_mean, pat_std = self.act_doe(obs_hat_a)
+    pat_mean, pat_std = self.act_decoder(obs_hat_a)
 
     ## beginning of value fn
     # # FFN Version
@@ -392,26 +378,6 @@ class WsaNet(BaseNet):
     # q_o_st: [num_workers, num_o] = [N, T, 1] in pytorch
     q_o_st = self.qso_lc(ot_tilde.transpose(0, 1)).squeeze(-1)
 
-    # #o
-    # # Attn Version
-    # wt = self.embed_option(embed_all_idx)
-    # # obs_cat: \tilde{S}_{t-1} [2, num_workers, dmodel]
-    # obs_cat = torch.cat([obs_hat.unsqueeze(0), ot.unsqueeze(0)], dim=0)
-    # # transformer outputs
-    # # dt: [2, num_workers, dmodel] [0]: mha_st; [1]: mha_ot
-    # rdt = self.doe(wt, obs_cat)
-    # # dt: [num_workers, dmodel(st)+dmodel(o_{t-1})]
-    # dt = torch.cat([rdt[0].squeeze(0), rdt[1].squeeze(0)], dim=-1)
-    # if dt.dim() < 2:
-    #   dt = dt.unsqueeze(0)
-    # # q_o_st: [num_workers, num_options]
-    # # todo: detach value fn from doe head; only train Linear
-    # # dt = dt.detach()
-    # q_o_st = self.v_logtis_lc(dt)
-
-    # if task_switch_flag:
-    #   po_t = po_t.detach()
-    #   po_t_log = po_t_log.detach()
     return {
         'po_t': po_t,
         'po_t_log': po_t_log,

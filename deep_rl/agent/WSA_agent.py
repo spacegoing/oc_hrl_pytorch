@@ -41,18 +41,16 @@ class WsaAgent(BaseAgent):
     self.env = self.task.env.envs[0].env
     self.task_switch_flag = False
 
-    # skill lag
-    self.skill_episodic_counter = np.ones((config.num_workers), dtype='int')
-    # min = 1, counting executed timesteps of each worker
-    # from last non-terminate episode
-
-  def _generate_lag_seq_mat(self, single_step_mat, init_state_flags, lag):
+  def _generate_lag_seq_mat(self, single_step_mat, init_state_flags, lag,
+                            counter):
     '''
     Parameters:
       single_step_mat: storage.cat_dim1('prev_o') [num_workers, total_timesteps]
       init_state_flags: previous timestep's termination flag. [num_workers]
       lag: integer, lag steps from [t-lag, ... , t-1]
-      self.skill_episodic_counter: [num_workers, 1].
+      counter: [num_workers, 1].
+               min = 1, counting executed timesteps of each worker
+               from last non-terminate episode
 
     Return:
       lag_mat: [num_workers, lag]. For empty timesteps,
@@ -67,18 +65,18 @@ class WsaAgent(BaseAgent):
     lag_mat[...] = self.config.padding_mask_token
 
     # update episodic step counter
-    self.skill_episodic_counter[init_state_flags] = 1
+    counter[init_state_flags] = 1
 
     # per-batch loop
     for b in range(bsz):
-      executed_steps = self.skill_episodic_counter[b]
+      executed_steps = counter[b]
       # if executed_steps > lag, reset to max lag
       seq_len = lag if executed_steps > lag else executed_steps
       start = total_len - seq_len
       lag_mat[b, :seq_len] = mat[b, start:]
 
     # update episodic step counter
-    self.skill_episodic_counter += 1
+    counter += 1
 
     return lag_mat
 
@@ -88,17 +86,17 @@ class WsaAgent(BaseAgent):
     init: [num_workers, rollout_length] storage.cat_dim1(['init'])
     '''
     bsz, total_steps = init.shape
-    self.skill_episodic_counter[:] = 1
+    counter = np.ones((bsz), dtype='int')
     # init final output
     lag_mat = np.zeros([total_steps, bsz, self.config.skill_lag], dtype='int')
     lag_mat[...] = self.config.padding_mask_token
     for t in range(total_steps):
-      lag_mat[t, ...] = self._generate_lag_seq_mat(prev_o[:, :t + 1], init[:,
-                                                                           t],
-                                                   self.config.skill_lag)
-    lag_mat = tensor(lag_mat).view(-1, self.config.skill_lag)
+      lag_mat[t,
+              ...] = self._generate_lag_seq_mat(prev_o[:, :t + 1], init[:, t],
+                                                self.config.skill_lag, counter)
+    lag_mat = lag_mat.reshape(-1, self.config.skill_lag)
     # init: [bsz, total_steps] -> [total_steps, bsz].view(-1, 1)
-    init = tensor(init).transpose(0, 1).reshape(-1, 1)
+    init = init.transpose(0, 1).reshape(-1, 1)
     return lag_mat, init
 
   def _option_clip_schedular(self):
@@ -284,6 +282,10 @@ class WsaAgent(BaseAgent):
       q_ot_st: [num_workers, 1] $Q_o_t(O=ot, S_t)$
       pot/pot_log: [num_workers, 1] $P(O=ot|S_t,o_{t-1};w_t)$
     '''
+    counter = np.ones((config.num_workers), dtype='int')
+    # min = 1, counting executed timesteps of each worker
+    # from last non-terminate episode
+
     with torch.no_grad():
       for _ in range(config.rollout_length):
         storage.add({
@@ -295,7 +297,7 @@ class WsaAgent(BaseAgent):
         prev_o_mat = storage.cat_dim1('prev_o')
         skill_lag_mat = self._generate_lag_seq_mat(prev_o_mat,
                                                    self.init_state_flags,
-                                                   config.skill_lag)
+                                                   config.skill_lag, counter)
         # print(prev_o_mat)
         # print(storage.cat_dim1('init'))
         # print(skill_lag_mat)
@@ -303,9 +305,8 @@ class WsaAgent(BaseAgent):
         # if debug_flag == True:
         #   import ipdb
         #   ipdb.set_trace(context=7)
-        prediction = self.network(states, self.prev_options,
-                                  self.init_state_flags, self.task_switch_flag,
-                                  skill_lag_mat)
+        prediction = self.network(states, skill_lag_mat, self.init_state_flags,
+                                  self.task_switch_flag)
 
         # mean/std: [num_workers, action_dim]
         pat_mean = prediction['pat_mean']
@@ -381,11 +382,10 @@ class WsaAgent(BaseAgent):
       prev_o_mat = storage.cat_dim1('prev_o')
       skill_lag_mat = self._generate_lag_seq_mat(prev_o_mat,
                                                  self.init_state_flags,
-                                                 config.skill_lag)
+                                                 config.skill_lag, counter)
 
-      prediction = self.network(states, self.prev_options,
-                                self.init_state_flags, self.task_switch_flag,
-                                skill_lag_mat)
+      prediction = self.network(states, skill_lag_mat, self.init_state_flags,
+                                self.task_switch_flag)
 
       storage.add(prediction)
       # padding storage
