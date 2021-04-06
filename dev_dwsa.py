@@ -81,7 +81,7 @@ def wsa(**kwargs):
   config.merge(kwargs)
 
   DoeContiOneOptionNet = reload(
-      sys.modules['deep_rl.network.network_heads']).DoeContiOneOptionNet
+      sys.modules['deep_rl.network.dwsa_heads']).WsaNet
   config.network_fn = lambda: DoeContiOneOptionNet(
       config.state_dim,
       config.action_dim,
@@ -178,7 +178,7 @@ if __name__ == "__main__":
       'dm-hopper', 'dm-acrobot', 'dm-finger', 'dm-humanoid-w', 'dm-humanoid-r',
       'dm-manipulator', 'dm-quadruped', 'dm-stacker', 'dm-swimmer'
   ]
-  cf.params_set = a[8]
+  cf.params_set = 'inverteddoublependulum7'
   cf.run = 1024
   # DOE
   kwargs = dict(run=cf.run, params_set=cf.params_set)

@@ -43,9 +43,12 @@ def basic_doe_params():
   config.cos_w = 0.0
   config.delib = 0.0
 
-  # WSA Train
-  config.max_lag = int(5e3)
+  # WSA
   config.skill_lag = 10
+  config.max_skill_lag = config.rollout_length
+  # skill embedding size = [num_o+1, embed]
+  # the last one is for padding
+  config.padding_mask_token = config.num_o
 
   # MISC
   config.num_workers = 4
@@ -134,6 +137,10 @@ doe_params_dict = {
     'humanoid': {
         'game': 'Humanoid-v2',
         'num_workers': 1
+    },
+    'inverteddoublependulum7': {
+        'game': 'InvertedDoublePendulum-v2',
+        'num_workers': 7
     },
     'inverteddoublependulum4': {
         'game': 'InvertedDoublePendulum-v2',

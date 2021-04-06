@@ -6,7 +6,7 @@ import torchtext
 from torchtext.data.utils import get_tokenizer
 from torch.nn import TransformerEncoder, TransformerEncoderLayer, TransformerDecoder, TransformerDecoderLayer, LayerNorm, Transformer
 
-debug_flag = False
+debug_flag = True
 
 
 class PositionalEncoding(nn.Module):
@@ -119,6 +119,7 @@ class TransformerModel(nn.Module):
     #     src, tgt, src_mask=src_mask, memory_mask=memory_mask, tgt_mask=tgt_mask)
 
     output = self.logits(output)
+    if debug_flag == True: import ipdb; ipdb.set_trace(context=7)
     return output
 
 

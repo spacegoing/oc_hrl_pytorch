@@ -16,37 +16,13 @@ import traceback
 
 client = MongoClient('mongodb://localhost:27017')
 db = client['sa']
-debug_flag = True
-
-
-def generate_lag_seq_mat(single_step_mat, lag=1):
-  '''
-  Parameters:
-    single_step_mat: storage.prev_o [num_workers, total_timesteps]
-    lag: interger [t-lag, ... , t-1]
-
-  Return:
-    lag_mat: [num_workers, total_timesteps, lag]
-             for empty timesteps, time step 1 does not have
-             value 1-1 ... 1-k, all empty timesteps' value
-             are -1
-  '''
-  mat = single_step_mat
-  lag_mat = tensor(np.zeros([mat.shape[0], mat.shape[1], lag]))
-  lag_mat[...] = -1
-
-  for b in range(mat.shape[0]):
-    # b batch index
-    for t in range(mat.shape[1]):
-      start = t + 1 - lag if (t + 1) > lag else 0
-      lag_mat[b, t, :t + 1] = mat[b][start:t + 1]
-  return lag_mat
+debug_flag = False
 
 
 class WsaAgent(BaseAgent):
 
   def __init__(self, config):
-    BaseAgent.__init__(self, config)
+    super().__init__(config)
     self.config = config
     self.task = config.task_fn()
     self.network = config.network_fn()
@@ -56,7 +32,7 @@ class WsaAgent(BaseAgent):
     self.states = self.task.reset()
     self.states = config.state_normalizer(self.states)
     self.prev_options = tensor(np.zeros([config.num_workers, 1])).long()
-    self.initial_state_flags = tensor(np.ones((config.num_workers))).bool()
+    self.init_state_flags = tensor(np.ones((config.num_workers))).bool()
 
     self.count = 0
     self.exp_col = db[config.log_file_apdx]
@@ -64,6 +40,47 @@ class WsaAgent(BaseAgent):
 
     self.env = self.task.env.envs[0].env
     self.task_switch_flag = False
+
+    # skill lag
+    self.skill_episodic_counter = np.ones((config.num_workers), dtype='int')
+    # min = 1, counting executed timesteps of each worker
+    # from last non-terminate episode
+
+  def _generate_lag_seq_mat(self, single_step_mat, init_state_flags, lag):
+    '''
+    Parameters:
+      single_step_mat: storage.cat_dim1('prev_o') [num_workers, total_timesteps]
+      init_state_flags: previous timestep's termination flag. [num_workers]
+      lag: integer, lag steps from [t-lag, ... , t-1]
+      self.skill_episodic_counter: [num_workers, 1].
+
+    Return:
+      lag_mat: [num_workers, lag]. For empty timesteps,
+              time step 1 does not have value 1-1 ... 1-k,
+              all empty timesteps' value are
+              self.config.padding_mask_token (default num_o+1)
+    '''
+    mat = single_step_mat
+    bsz, total_len = mat.shape
+    # init final output
+    lag_mat = np.zeros([bsz, lag], dtype='int')
+    lag_mat[...] = self.config.padding_mask_token
+
+    # update episodic step counter
+    self.skill_episodic_counter[init_state_flags] = 1
+
+    # per-batch loop
+    for b in range(bsz):
+      executed_steps = self.skill_episodic_counter[b]
+      # if executed_steps > lag, reset to max lag
+      seq_len = lag if executed_steps > lag else executed_steps
+      start = total_len - seq_len
+      lag_mat[b, :seq_len] = mat[b, start:]
+
+    # update episodic step counter
+    self.skill_episodic_counter += 1
+
+    return lag_mat
 
   def _option_clip_schedular(self):
     return self.config.ppo_ratio_clip_option_max - (
@@ -247,12 +264,26 @@ class WsaAgent(BaseAgent):
     '''
     with torch.no_grad():
       for _ in range(config.rollout_length):
-        if debug_flag == True:
-          import ipdb
-          ipdb.set_trace(context=7)
+        storage.add({
+            'prev_o': self.prev_options,
+            'init': self.init_state_flags.unsqueeze(-1)
+        })
+
+        # generate skill_lag_mat
+        prev_o_mat = storage.cat_dim1('prev_o')
+        skill_lag_mat = self._generate_lag_seq_mat(prev_o_mat,
+                                                   self.init_state_flags,
+                                                   config.skill_lag)
+        # print(prev_o_mat)
+        # print(storage.cat_dim1('init'))
+        # print(skill_lag_mat)
+
+        # if debug_flag == True:
+        #   import ipdb
+        #   ipdb.set_trace(context=7)
         prediction = self.network(states, self.prev_options,
-                                  self.initial_state_flags,
-                                  self.task_switch_flag)
+                                  self.init_state_flags, self.task_switch_flag,
+                                  skill_lag_mat)
 
         # mean/std: [num_workers, action_dim]
         pat_mean = prediction['pat_mean']
@@ -286,13 +317,11 @@ class WsaAgent(BaseAgent):
             's': tensor(states),
             'r': tensor(rewards).unsqueeze(-1),
             'm': tensor(1 - terminals).unsqueeze(-1),
-            'init': tensor(terminals).bool().unsqueeze(-1),
-            'prev_o': self.prev_options,
             'at': at,
             'pat_log_prob': pat_log_prob,
         })
 
-        self.initial_state_flags = tensor(terminals).bool()
+        self.init_state_flags = tensor(terminals).bool()
         self.prev_options = prediction['ot']
         states = next_states
         self.total_steps += config.num_workers
@@ -321,9 +350,21 @@ class WsaAgent(BaseAgent):
             })
 
       self.states = states
-      # add T+1 step
+      # execute T+1 step
+      storage.add({
+          'prev_o': self.prev_options,
+          'init': self.init_state_flags.unsqueeze(-1)
+      })
+      # generate skill_lag_mat
+      prev_o_mat = storage.cat_dim1('prev_o')
+      skill_lag_mat = self._generate_lag_seq_mat(prev_o_mat,
+                                                 self.init_state_flags,
+                                                 config.skill_lag)
+
       prediction = self.network(states, self.prev_options,
-                                self.initial_state_flags, self.task_switch_flag)
+                                self.init_state_flags, self.task_switch_flag,
+                                skill_lag_mat)
+
       storage.add(prediction)
       # padding storage
       storage.placeholder()
@@ -333,8 +374,6 @@ class WsaAgent(BaseAgent):
       # def cat(self, keys):
       #   data = [getattr(self, k)[:self.size] for k in keys]
       #   return map(lambda x: torch.cat(x, dim=0), data)
-
-
 
   def step(self):
     config = self.config
