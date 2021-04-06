@@ -82,6 +82,25 @@ class WsaAgent(BaseAgent):
 
     return lag_mat
 
+  def _generate_batch_lag_mat(self, prev_o, init):
+    '''
+    prev_o: [num_workers, rollout_length] storage.cat_dim1(['prev_o'])
+    init: [num_workers, rollout_length] storage.cat_dim1(['init'])
+    '''
+    bsz, total_steps = init.shape
+    self.skill_episodic_counter[:] = 1
+    # init final output
+    lag_mat = np.zeros([total_steps, bsz, self.config.skill_lag], dtype='int')
+    lag_mat[...] = self.config.padding_mask_token
+    for t in range(total_steps):
+      lag_mat[t, ...] = self._generate_lag_seq_mat(prev_o[:, :t + 1], init[:,
+                                                                           t],
+                                                   self.config.skill_lag)
+    lag_mat = tensor(lag_mat).view(-1, self.config.skill_lag)
+    # init: [bsz, total_steps] -> [total_steps, bsz].view(-1, 1)
+    init = tensor(init).transpose(0, 1).reshape(-1, 1)
+    return lag_mat, init
+
   def _option_clip_schedular(self):
     return self.config.ppo_ratio_clip_option_max - (
         self.config.ppo_ratio_clip_option_max -
@@ -131,11 +150,16 @@ class WsaAgent(BaseAgent):
     config = self.config
 
     states, at_old, pat_log_prob_old, ot_old, po_t_log_prob_old,\
-      o_ret, o_adv, a_ret, a_adv, prev_options, init = storage.cat(
+      o_ret, o_adv, a_ret, a_adv= storage.cat(
         ['s', 'at', 'pat_log_prob', 'ot', 'po_t_log', \
-         'o_ret', 'o_adv', 'a_ret', 'a_adv', 'prev_o', 'init'])
+         'o_ret', 'o_adv', 'a_ret', 'a_adv'])
+
     a_adv = (a_adv - a_adv.mean()) / a_adv.std()
     o_adv = (o_adv - o_adv.mean()) / o_adv.std()
+
+    prev_o, init = storage.cat_dim1('prev_o'), storage.cat_dim1('init')
+    # if debug_flag == True: import ipdb; ipdb.set_trace(context=7)
+    prev_options, init = self._generate_batch_lag_mat(prev_o, init)
 
     def embed_cosine_loss(wt, eps=1e-8):
       """
@@ -213,13 +237,11 @@ class WsaAgent(BaseAgent):
           a_adv: [batch_size, 1]
           prev_options: [batch_size, 1]
           '''
-          if debug_flag == True:
-            import ipdb
-            ipdb.set_trace(context=7)
           batch_indices = tensor(batch_indices).long()
           sampled_states = states[batch_indices]
           sampled_prev_options = prev_options[batch_indices]
           sampled_initial_flags = init[batch_indices]
+          # if debug_flag == True: import ipdb; ipdb.set_trace(context=7)
           prediction = self.network(sampled_states, sampled_prev_options,
                                     sampled_initial_flags,
                                     self.task_switch_flag)
