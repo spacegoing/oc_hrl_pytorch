@@ -48,8 +48,8 @@ class WsaAgent(BaseAgent):
       single_step_mat: storage.cat_dim1('prev_o') [num_workers, total_timesteps]
       init_state_flags: previous timestep's termination flag. [num_workers]
       lag: integer, lag steps from [t-lag, ... , t-1]
-      counter: [num_workers, 1].
-               min = 1, counting executed timesteps of each worker
+      counter: [num_workers].
+               min(counter) = 1, counting executed timesteps of each worker
                from last non-terminate episode
 
     Return:
@@ -65,7 +65,8 @@ class WsaAgent(BaseAgent):
     lag_mat[...] = self.config.padding_mask_token
 
     # update episodic step counter
-    counter[init_state_flags] = 1
+    # if tensor, it will call .int() and break for bsz=1
+    counter[init_state_flags.numpy()] = 1
 
     # per-batch loop
     for b in range(bsz):
@@ -86,7 +87,7 @@ class WsaAgent(BaseAgent):
     init: [num_workers, rollout_length] storage.cat_dim1(['init'])
     '''
     bsz, total_steps = init.shape
-    counter = np.ones((bsz), dtype='int')
+    counter = np.ones(bsz, dtype='int')
     # init final output
     lag_mat = np.zeros([total_steps, bsz, self.config.skill_lag], dtype='int')
     lag_mat[...] = self.config.padding_mask_token
@@ -282,8 +283,8 @@ class WsaAgent(BaseAgent):
       q_ot_st: [num_workers, 1] $Q_o_t(O=ot, S_t)$
       pot/pot_log: [num_workers, 1] $P(O=ot|S_t,o_{t-1};w_t)$
     '''
-    counter = np.ones((config.num_workers), dtype='int')
-    # min = 1, counting executed timesteps of each worker
+    counter = np.ones(config.num_workers, dtype='int')
+    # min(counter) = 1, counting executed timesteps of each worker
     # from last non-terminate episode
 
     with torch.no_grad():
