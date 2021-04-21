@@ -184,8 +184,12 @@ class WsaAgent(BaseAgent):
       p_loss = -torch.min(p_obj, p_obj_clipped).mean()
       return p_loss
 
-    def learn_action(prediction, sampled_at_old, sampled_pat_log_prob_old,
-                     sampled_a_adv, sampled_a_ret, misc):
+    def learn_action(prediction,
+                     sampled_at_old,
+                     sampled_pat_log_prob_old,
+                     sampled_a_adv,
+                     sampled_a_ret,
+                     misc=None):
       # mean/std: [num_workers, action_dim]
       pat_mean = prediction['pat_mean']
       pat_std = prediction['pat_std']
@@ -200,8 +204,12 @@ class WsaAgent(BaseAgent):
       q_loss = (prediction['q_ot_st'] - sampled_a_ret).pow(2).mul(0.5).mean()
       return pat_loss + q_loss - config.a_entropy_weight * pat_ent
 
-    def learn_option(prediction, sampled_ot_old, sampled_po_t_log_prob_old,
-                     sampled_o_adv, sampled_o_ret, misc):
+    def learn_option(prediction,
+                     sampled_ot_old,
+                     sampled_po_t_log_prob_old,
+                     sampled_o_adv,
+                     sampled_o_ret,
+                     misc=None):
       po_t_ent = -(prediction['po_t_log'] * prediction['po_t']).sum(-1).mean()
       pot_log_prob_new = prediction['po_t_log'].gather(1, sampled_ot_old)
       pot_log_prob_old = sampled_po_t_log_prob_old.gather(1, sampled_ot_old)
@@ -258,14 +266,8 @@ class WsaAgent(BaseAgent):
             sampled_ret = o_ret[batch_indices]
             misc = {'wt': prediction['wt']}
 
-          loss = learn_fn(
-              prediction,
-              sampled_action_old,
-              sampled_log_prob_old,
-              sampled_adv,
-              sampled_ret,
-              misc,
-          )
+          loss = learn_fn(prediction, sampled_action_old, sampled_log_prob_old,
+                          sampled_adv, sampled_ret, misc)
           self.opt.zero_grad()
           loss.backward()
           nn.utils.clip_grad_norm_(self.network.parameters(),

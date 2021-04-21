@@ -73,16 +73,15 @@ def wsa(**kwargs):
   # #   (discount, str(use_gae), gae_tau)
   # # kwargs['remark'] = 'CO_Schedular_DOE_nhead%d_dm%d_nl%d_nhid%d' %\
   # #   (nhead, dmodel, nlayers, nhid)
-  kwargs['remark'] = 'Param_%s_Net_nhead%d_dm%d_nl%d_nhid%d_nO_%d' %\
-    (kwargs.get('params_set',''),
-     config.nhead, config.dmodel, config.nlayers, config.nhid,config.num_o)
+  kwargs['remark'] = 'Net_nhead%d_dm%d_nl%d_nhid%d_nO_%d' %\
+    (config.nhead, config.dmodel, config.nlayers, config.nhid, config.num_o)
   kwargs['game'] = config.game
   generate_tag(kwargs)
   config.merge(kwargs)
 
-  DoeContiOneOptionNet = reload(
+  WsaNet = reload(
       sys.modules['deep_rl.network.dwsa_heads']).WsaNet
-  config.network_fn = lambda: DoeContiOneOptionNet(
+  config.network_fn = lambda: WsaNet(
       config.state_dim,
       config.action_dim,
       num_options=config.num_o,

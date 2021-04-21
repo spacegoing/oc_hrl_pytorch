@@ -233,9 +233,13 @@ class WsaNet(BaseNet):
     # num_embed = num_options + 1  # one extra for padding
     # self.embed_qso = nn.Embedding(num_embed, dmodel)
     # nn.init.orthogonal_(self.embed_qso.weight)
-    self.qso_encoder = SkillEncoder(
-        dmodel, nhead, nhid, nlayers, config.rollout_length + 1, dropout=0)
+    # self.qso_encoder = SkillEncoder(
+    #     dmodel, nhead, nhid, nlayers, config.rollout_length + 1, dropout=0)
     self.qso_lc = layer_init(nn.Linear(dmodel, 1))
+    # self.qso_lc = WsaFFN(dmodel, hidden_units=(64, 64, 1))
+
+    self.vso_lc = layer_init(nn.Linear(dmodel, 1))
+    self.vso_lc1 = layer_init(nn.Linear(num_options, 1))
 
     self.num_options = num_options
     self.action_dim = action_dim
@@ -378,6 +382,10 @@ class WsaNet(BaseNet):
     # q_o_st: [num_workers, num_o] = [N, T, 1] in pytorch
     q_o_st = self.qso_lc(ot_tilde.transpose(0, 1)).squeeze(-1)
 
+    # v_st = (q_o_st * po_t).sum(axis=1).unsqueeze(-1)
+    v_st_o = self.vso_lc(ot_tilde.transpose(0, 1)).squeeze(-1)
+    v_st = self.vso_lc1(v_st_o)
+
     return {
         'po_t': po_t,
         'po_t_log': po_t_log,
@@ -385,7 +393,7 @@ class WsaNet(BaseNet):
         'po_t_dist': po_t_dist,
         'q_o_st': q_o_st,
         'q_ot_st': q_o_st.gather(1, ot_hat.unsqueeze(-1)),
-        'v_st': (q_o_st * po_t).sum(axis=1).unsqueeze(-1),
+        'v_st': v_st,
         'pat_mean': pat_mean,
         'pat_std': pat_std,
         'wt': self.embed_option(range_tensor(self.num_options)),

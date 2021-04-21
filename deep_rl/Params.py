@@ -44,7 +44,7 @@ def basic_doe_params():
   config.delib = 0.0
 
   # WSA
-  config.skill_lag = 10
+  config.skill_lag = 3
   config.max_skill_lag = config.rollout_length
   # skill embedding size = [num_o+1, embed]
   # the last one is for padding
