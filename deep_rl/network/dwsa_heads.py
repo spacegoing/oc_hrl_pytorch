@@ -136,6 +136,59 @@ class SkillDecoder(nn.Module):
     return output
 
 
+class SkillPolicy(nn.Module):
+
+  def __init__(self, dmodel, nhead, nhid, nlayers, max_seq_len, dropout=0):
+    super().__init__()
+    self.dmodel = dmodel
+    self.nhead = nhead
+    # todo: hyper_param  positional_dropout does pos_encoder need dropout?
+    self.pos_encoder = LearnablePositionalEncoding(
+        dmodel, max_seq_len, dropout=0.1)
+
+    # transformer encoder
+    decoder_layers = nn.TransformerDecoderLayer(dmodel, nhead, nhid, dropout)
+    decoder_norm = nn.LayerNorm(dmodel)
+    self.transformer_decoder = nn.TransformerDecoder(decoder_layers, nlayers,
+                                                     decoder_norm)
+    self.init_weights()
+
+  def _generate_square_subsequent_mask(self, sz):
+    mask = tensor(torch.triu(torch.ones(sz, sz)) == 1).transpose(0, 1)
+    mask = mask.float().masked_fill(mask == 0, float('-inf')).masked_fill(
+        mask == 1, float(0.0))
+    return mask
+
+  def init_weights(self):
+    """Initiate parameters in the transformer model."""
+    for p in self.parameters():
+      if p.dim() > 1:
+        nn.init.xavier_uniform_(p)
+
+  def forward(self, tgt, memory, tgt_key_padding_mask):
+    """Pass the inputs (and mask) through the decoder layer.
+    No self attention, mask on tgt, no mask on memory, only padding_mask
+      Args:
+          tgt: the sequence to the decoder layer (required). [T,N,E]. Tgt is ot_1k
+          memory: the sequence from the last layer of the encoder (required).[S,N,E] memory is Wt
+          tgt_key_padding_mask: the mask for the target keys per batch (required).[N,T]
+      Shape:
+          see the docs in Transformer class.
+    """
+    tgt_seq_len = tgt.shape[0]
+    tgt_mask = self._generate_square_subsequent_mask(tgt_seq_len)
+
+    tgt = tgt * math.sqrt(self.dmodel)
+    tgt = self.pos_encoder(tgt)
+    output = self.transformer_decoder(
+        tgt,
+        memory,
+        tgt_mask=tgt_mask,
+        tgt_key_padding_mask=tgt_key_padding_mask)
+
+    return output
+
+
 class WsaFFN(BaseNet):
 
   def __init__(self, state_dim, hidden_units=(64, 64), gate=F.relu):
@@ -214,10 +267,11 @@ class WsaNet(BaseNet):
 
     #w decoder P(O_t|S_t,O_{t-1...k})
     # todo: other implementation?
-    self.skill_decoder_lc = layer_init(nn.Linear(dmodel, 1))
     self.de_state_lc = layer_init(nn.Linear(state_dim, dmodel))
     self.de_state_norm = nn.LayerNorm(dmodel)
-    self.skill_decoder = SkillDecoder(dmodel, nhead, nhid, nlayers, dropout=0)
+    self.skill_policy = SkillPolicy(
+        dmodel, nhead, nhid, nlayers, config.rollout_length, dropout=0)
+    self.skill_policy_lc = layer_init(nn.Linear(dmodel, num_options))
 
     ## Primary Action
     # todo: no concat but +;
@@ -235,11 +289,10 @@ class WsaNet(BaseNet):
     # nn.init.orthogonal_(self.embed_qso.weight)
     # self.qso_encoder = SkillEncoder(
     #     dmodel, nhead, nhid, nlayers, config.rollout_length + 1, dropout=0)
-    self.qso_lc = layer_init(nn.Linear(dmodel, 1))
+    self.qso_lc = layer_init(nn.Linear(dmodel, num_options))
     # self.qso_lc = WsaFFN(dmodel, hidden_units=(64, 64, 1))
 
     self.vso_lc = layer_init(nn.Linear(dmodel, 1))
-    self.vso_lc1 = layer_init(nn.Linear(num_options, 1))
 
     self.num_options = num_options
     self.action_dim = action_dim
@@ -296,26 +349,24 @@ class WsaNet(BaseNet):
     # wt: [num_options, num_workers, dmodel(embedding size in init)]
     wt = self.embed_option(embed_all_idx)
 
-    # decoder inputs
-    #w ot_1k: {o_{t-1},...,o_{t-k}} [num_workers, config.skill_lag, dmodel(embedding size in init)]
-    ot_1k = self.embed_option(skill_lag_mat).detach()
-    # ot_1k_tilde: [skill_lag, num_workers, dmodel] = [S, N, E] in pytorch
-    ot_1k_tilde = self.skill_encoder(ot_1k.transpose(0, 1), skill_padding_mask)
-
+    # skill policy inputs
     #w st_tilde: [num_workers, dmodel]
     st_tilde = F.relu(self.de_state_lc(obs))
     st_tilde = self.de_state_norm(st_tilde)
 
-    #w ot_1k_tilde = ot_1k_tilde + st_tilde
+    #w ot_1k: {o_{t-1},...,o_{t-k}} [num_workers, config.skill_lag, dmodel(embedding size in init)]
+    ot_1k = self.embed_option(skill_lag_mat).detach()
+    # ot_1k_tilde: [skill_lag, num_workers, dmodel] = [S, N, E] in pytorch
+    ot_1k_tilde = ot_1k.transpose(0, 1)
     ot_1k_tilde = ot_1k_tilde + st_tilde.unsqueeze(0)
 
-    # transformer outputs
-
-    #w
-    # ot_tilde: [num_o, num_workers, dmodel] = [T, N, E] in pytorch
-    ot_tilde = self.skill_decoder(wt, ot_1k_tilde, skill_padding_mask)
-    # po_t_logits: [num_workers, num_o] = [N, T, 1] in pytorch
-    po_t_logits = self.skill_decoder_lc(ot_tilde.transpose(0, 1)).squeeze(-1)
+    # skill policy outputs
+    # ot_tilde: [skill_lag, num_workers, dmodel] = [T, N, E] in pytorch
+    ot_tilde = self.skill_policy(ot_1k_tilde, wt, skill_padding_mask)
+    # ot_tilde: [num_workers, dmodel] average over all time steps
+    ot_tilde = ot_tilde.transpose(0, 1).mean(dim=1)
+    # po_t_logits: [num_workers, num_o]
+    po_t_logits = self.skill_policy_lc(ot_tilde).squeeze(-1)
 
     # handle initial state
     if initial_state_flags.any():
@@ -378,13 +429,12 @@ class WsaNet(BaseNet):
 
     # todo: detach???
     # todo: FFN?
-    # ot_tilde: [num_o, num_workers, dmodel] = [T, N, E] in pytorch
-    # q_o_st: [num_workers, num_o] = [N, T, 1] in pytorch
-    q_o_st = self.qso_lc(ot_tilde.transpose(0, 1)).squeeze(-1)
+    # ot_tilde: [num_workers, dmodel] = [N, E] in pytorch
+    # q_o_st: [num_workers, num_o] in pytorch
+    q_o_st = self.qso_lc(ot_tilde)
 
     # v_st = (q_o_st * po_t).sum(axis=1).unsqueeze(-1)
-    v_st_o = self.vso_lc(ot_tilde.transpose(0, 1)).squeeze(-1)
-    v_st = self.vso_lc1(v_st_o)
+    v_st = self.vso_lc(ot_tilde)
 
     return {
         'po_t': po_t,

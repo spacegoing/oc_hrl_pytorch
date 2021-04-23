@@ -117,7 +117,11 @@ if __name__ == "__main__":
   # run 1401: with ot_tilde_a detached
   # run 1501: same with 1401 but
   #             P(ot|st,ot_1,k) ot_1,k is not detached
-  run_list = [[1501, game, i] for game in games for i in range(num_run)]
+
+  # run 1003: skill_lag = 3
+  # run 1005: skill_lag = 5
+  # run 1001: skill_lag = 1
+  run_list = [[1001, game, i] for game in games for i in range(num_run)]
   with Pool(processes=num_proc) as pool:
     start = time.time()
     for x in pool.imap(call_job, run_list):
