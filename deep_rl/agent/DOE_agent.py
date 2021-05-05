@@ -146,7 +146,10 @@ class DoeAgent(BaseAgent):
       pot_loss = pot_loss - config.o_entropy_weight * po_t_ent
 
       q_loss = (prediction['v_st'] - sampled_o_ret).pow(2).mul(0.5).mean()
-      cosine_loss = embed_cosine_loss(misc['wt'], eps=1e-8)
+      cosine_loss = 0
+      # handle signle net
+      if misc['wt'] is not None:
+        cosine_loss = embed_cosine_loss(misc['wt'], eps=1e-8)
       return pot_loss + q_loss + config.cos_w * cosine_loss
 
     learn_fn_list = [[learn_option, 'o'], [learn_action, 'a']]

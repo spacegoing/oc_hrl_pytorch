@@ -80,6 +80,39 @@ def doe_continuous(**kwargs):
   run_steps(DoeAgent(config))
 
 
+# sa integer option single action policy
+def sa_single_net(**kwargs):
+  config = basic_doe_params()
+
+  config.merge(kwargs)
+  config.merge(doe_params_dict.get(kwargs.get('params_set'), dict()))
+
+  if config.tasks:
+    set_tasks(config)
+
+  config.task_fn = lambda: Task(config.game, num_envs=config.num_workers)
+  config.eval_env = Task(config.game)
+
+  if 'dm-humanoid' in config.game:
+    config.nhid = 128
+
+  kwargs['remark'] = 'Param_%s_Net_nhead%d_dm%d_nl%d_nhid%d_nO_%d' %\
+    (kwargs.get('params_set',''),
+     config.nhead, config.dmodel, config.nlayers, config.nhid,config.num_o)
+  kwargs['game'] = config.game
+  generate_tag(kwargs)
+  config.merge(kwargs)
+
+  SingleSANet = reload(sys.modules['deep_rl.network.network_heads']).SingleSANet
+  config.network_fn = lambda: SingleSANet(
+      config.state_dim,
+      config.action_dim,
+      num_options=config.num_o,
+      config=config)
+  DoeAgent = reload(sys.modules['deep_rl.agent.DOE_agent']).DoeAgent
+  run_steps(DoeAgent(config))
+
+
 if __name__ == "__main__":
   random_seed()
   set_one_thread()
@@ -91,4 +124,5 @@ if __name__ == "__main__":
   cf.run = 4410
   # DOE
   kwargs = dict(run=cf.run, params_set=cf.params_set)
-  doe_continuous(**kwargs)
+  # doe_continuous(**kwargs)
+  sa_single_net(**kwargs)

@@ -801,3 +801,116 @@ class DoeContiOneOptionNet(BaseNet):
         'pat_std': pat_std,
         'wt': self.embed_option(range_tensor(self.num_options)),
     }
+
+
+class SingleSANet(BaseNet):
+
+  def __init__(self, state_dim, action_dim, num_options, config):
+    super().__init__()
+    self.phi_body = DummyBody(state_dim)
+
+    # P(o_t|s_t,o_{t-1})
+    # An extra dim for option index
+    self.actor_body = FCBody(
+        config.state_dim + 1, hidden_units=config.hidden_units)
+    self.fc_pi_o = layer_init(
+        nn.Linear(self.actor_body.feature_dim, num_options), 1e-3)
+    self.init_po_ffn = DoeDecoderFFN(state_dim, hidden_units=(64, num_options))
+
+    # P(a_t|s_t,o_t)
+    self.option_body_fn = lambda: FCBody(
+        config.state_dim, hidden_units=config.hidden_units)
+    self.options = nn.ModuleList([
+        SingleOptionNet(action_dim, self.option_body_fn)
+        for _ in range(num_options)
+    ])
+
+    # An extra dim for option index
+    self.critic_body = FCBody(
+        config.state_dim + 1, hidden_units=config.hidden_units)
+    self.fc_q_o = layer_init(
+        nn.Linear(self.critic_body.feature_dim, num_options), 1e-3)
+
+    # Norms
+    self.po_norm = nn.LayerNorm(config.state_dim + 1)
+    self.qo_norm = nn.LayerNorm(config.state_dim + 1)
+
+    self.num_options = num_options
+    self.action_dim = action_dim
+    self.to(Config.DEVICE)
+
+  def forward(self, obs, prev_options, initial_state_flags):
+    '''
+    Params:
+
+    Returns:
+      po_t: [num_workers, num_options]
+      po_t_log: [num_workers, num_options]
+      ot: [num_workers, 1]
+          However, ot as intermediate results in this
+          function are [num_workers]
+      po_t_dist: Categorical(probs: torch.Size([3, 4]))
+      q_o_st: [num_workers, num_options]
+      q_ot_st: [num_workers, 1]
+      v_st: [num_workers, 1]
+            V(S_t,O_{t-1}) = \sum_{o\in \O_t} P(o|S_t,O_{t-1})Q(o,S_t)
+      pat_mean: [num_workers, act_dim]
+      pat_std: [num_workers, act_dim]
+      obs: [num_workers, state_dim]
+
+    Returns:
+        inter_pi: [num_workers, num_options]
+        log_inter_pi: [num_workers, num_options]
+        beta: [num_workers, num_options]
+        mean: [num_workers, num_options, action_dim]
+        std: [num_workers, num_options, action_dim]
+        q_o: [num_workers, num_options]
+        u_o: [num_workers, num_options+1]
+    '''
+    obs = tensor(obs)
+    phi = self.phi_body(obs)
+
+    # P(O_t|S_t,O_t)
+    phi_o = self.po_norm(torch.cat([phi, prev_options], dim=-1))
+    phi_o = self.actor_body(phi_o)
+    po_t_logits = self.fc_pi_o(phi_o)
+
+    # handle initial state
+    if initial_state_flags.any():
+      if initial_state_flags.dim() > 1:
+        initial_state_flags = initial_state_flags.squeeze(-1)
+      po_t_logits_init = self.init_po_ffn(obs)
+      po_t_logits[initial_state_flags] = po_t_logits_init[initial_state_flags]
+
+    po_t = F.softmax(po_t_logits, dim=-1)
+    po_t_log = F.log_softmax(po_t_logits, dim=-1)
+    ## sample options
+    po_t_dist = torch.distributions.Categorical(probs=po_t)
+    # ot_hat: [num_workers]
+    ot_hat = po_t_dist.sample()
+
+    mean = []
+    std = []
+    for worker, o in enumerate(ot_hat):
+      prediction = self.options[o](phi[worker, :])
+      mean.append(prediction['mean'].unsqueeze(1))
+      std.append(prediction['std'][0, :].unsqueeze(1))
+    pat_mean = torch.cat(mean, dim=-1).T
+    pat_std = torch.cat(std, dim=-1).T
+
+    phi_c = self.po_norm(torch.cat([phi, ot_hat.unsqueeze(1)], dim=-1))
+    phi_c = self.critic_body(phi_c)
+    q_o_st = self.fc_q_o(phi_c)
+
+    return {
+        'po_t': po_t,
+        'po_t_log': po_t_log,
+        'ot': ot_hat.unsqueeze(-1),
+        'po_t_dist': po_t_dist,
+        'q_o_st': q_o_st,
+        'q_ot_st': q_o_st.gather(1, ot_hat.unsqueeze(-1)),
+        'v_st': (q_o_st * po_t).sum(axis=1).unsqueeze(-1),
+        'pat_mean': pat_mean,
+        'pat_std': pat_std,
+        'wt': None,
+    }
