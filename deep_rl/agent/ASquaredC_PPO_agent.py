@@ -32,12 +32,9 @@ class ASquaredCPPOAgent(BaseAgent):
 
     self.all_options = []
 
-  def compute_pi_hat(self, prediction, prev_option, is_intial_states):
-    inter_pi = prediction['inter_pi']
-    mask = torch.zeros_like(inter_pi)
-    mask[self.worker_index, prev_option] = 1
-    beta = prediction['beta']
-    pi_hat = (1 - beta) * mask + beta * inter_pi
+  def compute_pi_hat(self, prediction, is_intial_states):
+    inter_pi = prediction['inter_pi'] + 1e-5
+    pi_hat = prediction['pi_hat'] + 1e-5
     is_intial_states = is_intial_states.view(-1, 1).expand(-1, inter_pi.size(1))
     pi_hat = torch.where(is_intial_states, inter_pi, pi_hat)
     return pi_hat
@@ -111,22 +108,19 @@ class ASquaredCPPOAgent(BaseAgent):
         sampled_returns = returns[batch_indices]
         sampled_advantages = advantages[batch_indices]
 
-        prediction = self.network(sampled_states)
+        prediction = self.network(sampled_states, sampled_prev_o)
 
         if mdp == 'hat':
-          cur_pi_hat = self.compute_pi_hat(prediction, sampled_prev_o.view(-1),
-                                           sampled_init.view(-1))
+          cur_pi_hat = self.compute_pi_hat(prediction, sampled_init.view(-1))
           entropy = -(cur_pi_hat * cur_pi_hat.add(1e-5).log()).sum(-1).mean()
           log_pi_a = self.compute_log_pi_a(sampled_options, cur_pi_hat,
                                            sampled_actions, sampled_mean,
                                            sampled_std, mdp)
-          beta_loss = prediction['beta'].mean()
         elif mdp == 'bar':
           log_pi_a = self.compute_log_pi_a(sampled_options, sampled_pi_hat,
                                            sampled_actions, prediction['mean'],
                                            prediction['std'], mdp)
           entropy = 0
-          beta_loss = 0
         else:
           raise NotImplementedError
 
@@ -142,8 +136,8 @@ class ASquaredCPPOAgent(BaseAgent):
         obj_clipped = ratio.clamp(
             1.0 - self.config.ppo_ratio_clip,
             1.0 + self.config.ppo_ratio_clip) * sampled_advantages
-        policy_loss = -torch.min(obj, obj_clipped).mean() - config.entropy_weight * entropy + \
-                      config.beta_weight * beta_loss
+        policy_loss = -torch.min(
+            obj, obj_clipped).mean() - config.entropy_weight * entropy
 
         discarded = (obj > obj_clipped).float().mean()
         self.logger.add_scalar('clipped_%s' % (mdp), discarded, log_level=5)
@@ -165,8 +159,7 @@ class ASquaredCPPOAgent(BaseAgent):
     state = config.state_normalizer(state)
 
     prediction = self.network(state)
-    pi_hat = self.compute_pi_hat(prediction, self.prev_options,
-                                 self.is_initial_states)
+    pi_hat = self.compute_pi_hat(prediction, self.is_initial_states)
     dist = torch.distributions.Categorical(pi_hat)
     options = dist.sample()
 
@@ -206,16 +199,11 @@ class ASquaredCPPOAgent(BaseAgent):
                       ['adv_bar', 'adv_hat', 'ret_bar', 'ret_hat'])
     states = self.states
     for _ in range(config.rollout_length):
-      prediction = self.network(states)
-      pi_hat = self.compute_pi_hat(prediction, self.prev_options,
-                                   self.is_initial_states)
+      prediction = self.network(states, self.prev_options)
+      pi_hat = self.compute_pi_hat(prediction, self.is_initial_states)
       dist = torch.distributions.Categorical(probs=pi_hat)
       options = dist.sample()
 
-      self.logger.add_scalar(
-          'beta',
-          prediction['beta'][self.worker_index, self.prev_options],
-          log_level=5)
       self.logger.add_scalar('option', options[0], log_level=5)
       self.logger.add_scalar('pi_hat_ent', dist.entropy(), log_level=5)
       self.logger.add_scalar(
@@ -272,9 +260,8 @@ class ASquaredCPPOAgent(BaseAgent):
       self.total_steps += config.num_workers
 
     self.states = states
-    prediction = self.network(states)
-    pi_hat = self.compute_pi_hat(prediction, self.prev_options,
-                                 self.is_initial_states)
+    prediction = self.network(states, self.prev_options)
+    pi_hat = self.compute_pi_hat(prediction, self.is_initial_states)
     dist = torch.distributions.Categorical(pi_hat)
     options = dist.sample()
     v_bar = prediction['q_o'].gather(1, options.unsqueeze(-1))

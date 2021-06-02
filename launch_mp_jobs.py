@@ -16,7 +16,7 @@ def call_job(cmd):
 
 
 if __name__ == "__main__":
-  total_tasks = 6 * 7 * 10
+  total_tasks = 10 * 1 * 10
   # only 2 GPUs, cudaid=0/1
   py_path = 'python /home/stu-chli/dgxCodeLab/dac/mp_jobs.py --i=%d --cudaid=%d'
   cudaid = -1

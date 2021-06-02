@@ -10,79 +10,88 @@ error_col = db['mp_jobs_error']
 def batch_mujoco(cf):
   try:
     games = [
-        'Ant-v2', 'Humanoid-v2', 'HumanoidStandup-v2',
-        'InvertedDoublePendulum-v2', 'InvertedPendulum-v2', 'Reacher-v2'
+        ## dac 4 games
+        'HalfCheetah-v2',
+        'Swimmer-v2',
+        'HumanoidStandup-v2',
+        'Reacher-v2',
+        ## Finite
+        'Walker2d-v2',
+        'Hopper-v2',
+        'InvertedPendulum-v2',
+        'InvertedDoublePendulum-v2',
+        'Ant-v2',
+        'Humanoid-v2',
     ]
     params = []
     for game in games:
       for r in range(10):
-        params.append([
-            a_squared_c_ppo_continuous,
-            dict(
-                game=game,
-                run=r,
-                tasks=False,
-                remark='ASC-PPO',
-                gate=nn.Tanh(),
-                num_o=4)
-        ])
-        params.append([
-            ahp_ppo_continuous,
-            dict(
-                game=game,
-                run=r,
-                tasks=False,
-                remark='AHP',
-                gate=nn.Tanh(),
-                num_o=4)
-        ])
-        params.append([
-            ppoc_continuous,
-            dict(
-                game=game,
-                run=r,
-                tasks=False,
-                remark='PPOC',
-                gate=nn.Tanh(),
-                num_o=4)
-        ])
-        params.append([
-            ppo_continuous,
-            dict(game=game, run=r, tasks=False, remark='PPO', gate=nn.Tanh())
-        ])
-
         # params.append([
-        #     iopg_continuous,
+        #     a_squared_c_ppo_continuous,
         #     dict(
         #         game=game,
         #         run=r,
         #         tasks=False,
-        #         remark='IOPG',
+        #         remark='ASC-PPO',
         #         gate=nn.Tanh(),
-        #         num_workers=4)
+        #         num_o=4)
         # ])
-        params.append([
-            oc_continuous,
-            dict(
-                game=game,
-                run=r,
-                tasks=False,
-                remark='OC',
-                gate=nn.Tanh(),
-                num_workers=4,
-                num_o=4)
-        ])
         # params.append([
-        #     a_squared_c_a2c_continuous,
+        #     ahp_ppo_continuous,
         #     dict(
         #         game=game,
         #         run=r,
         #         tasks=False,
-        #         remark='ASC-A2C',
+        #         remark='AHP',
+        #         gate=nn.Tanh(),
+        #         num_o=10)
+        # ])
+        # params.append([
+        #     ppoc_continuous,
+        #     dict(
+        #         game=game,
+        #         run=r,
+        #         tasks=False,
+        #         remark='PPOC',
+        #         gate=nn.Tanh(),
+        #         num_o=10)
+        # ])
+        # # params.append([
+        # #     ppo_continuous,
+        # #     dict(game=game, run=r, tasks=False, remark='PPO', gate=nn.Tanh())
+        # # ])
+        params.append([
+            iopg_continuous,
+            dict(
+                game=game,
+                run=r,
+                tasks=False,
+                remark='IOPG',
+                gate=nn.Tanh(),
+                num_workers=4)
+        ])
+        # params.append([
+        #     oc_continuous,
+        #     dict(
+        #         game=game,
+        #         run=r,
+        #         tasks=False,
+        #         remark='OC',
         #         gate=nn.Tanh(),
         #         num_workers=4,
-        #         num_o=16)
+        #         num_o=10)
         # ])
+        # # params.append([
+        # #     a_squared_c_a2c_continuous,
+        # #     dict(
+        # #         game=game,
+        # #         run=r,
+        # #         tasks=False,
+        # #         remark='ASC-A2C',
+        # #         gate=nn.Tanh(),
+        # #         num_workers=4,
+        # #         num_o=16)
+        # # ])
 
     algo, param = params[cf.i]
     algo(**param)
@@ -205,7 +214,7 @@ def a_squared_c_ppo_continuous(**kwargs):
   kwargs.setdefault('opt_ep', 5)
   kwargs.setdefault('entropy_weight', 0.01)
   kwargs.setdefault('tasks', False)
-  kwargs.setdefault('max_steps', int(2e6))
+  kwargs.setdefault('max_steps', int(1e6))
   kwargs.setdefault('beta_weight', 0)
   config = Config()
   config.merge(kwargs)
@@ -218,15 +227,16 @@ def a_squared_c_ppo_continuous(**kwargs):
   else:
     hidden_units = (128, 128)
 
-  config.task_fn = lambda: Task(config.game)
+  config.task_fn = lambda: Task(config.game, num_envs=4)
   config.eval_env = config.task_fn()
+  config.num_workers = 4
 
-  config.network_fn = lambda: OptionGaussianActorCriticNet(
+  config.network_fn = lambda: NoTermHead(
       config.state_dim,
       config.action_dim,
       num_options=config.num_o,
       actor_body=FCBody(
-          config.state_dim, hidden_units=hidden_units, gate=config.gate),
+          config.state_dim + 1, hidden_units=hidden_units, gate=config.gate),
       critic_body=FCBody(
           config.state_dim, hidden_units=hidden_units, gate=config.gate),
       option_body_fn=lambda: FCBody(
@@ -250,14 +260,14 @@ def a_squared_c_ppo_continuous(**kwargs):
 def a_squared_c_a2c_continuous(**kwargs):
   generate_tag(kwargs)
   kwargs.setdefault('log_level', 0)
-  kwargs.setdefault('num_o', 4)
+  kwargs.setdefault('num_o', 10)
   kwargs.setdefault('learning', 'all')
   kwargs.setdefault('gate', nn.ReLU())
   kwargs.setdefault('freeze_v', False)
   kwargs.setdefault('opt_ep', 5)
   kwargs.setdefault('entropy_weight', 0.01)
   kwargs.setdefault('tasks', False)
-  kwargs.setdefault('max_steps', int(2e6))
+  kwargs.setdefault('max_steps', int(1e6))
   kwargs.setdefault('num_workers', 16)
   config = Config()
   config.merge(kwargs)
@@ -300,7 +310,7 @@ def ppo_continuous(**kwargs):
   kwargs.setdefault('log_level', 0)
   kwargs.setdefault('gate', nn.ReLU())
   kwargs.setdefault('tasks', False)
-  kwargs.setdefault('max_steps', int(2e6))
+  kwargs.setdefault('max_steps', int(1e6))
   config = Config()
   config.merge(kwargs)
 
@@ -340,12 +350,12 @@ def ppo_continuous(**kwargs):
 def oc_continuous(**kwargs):
   generate_tag(kwargs)
   kwargs.setdefault('log_level', 0)
-  kwargs.setdefault('num_o', 4)
+  kwargs.setdefault('num_o', 10)
   kwargs.setdefault('learning', 'all')
   kwargs.setdefault('gate', nn.ReLU())
   kwargs.setdefault('entropy_weight', 0.01)
   kwargs.setdefault('tasks', False)
-  kwargs.setdefault('max_steps', int(2e6))
+  kwargs.setdefault('max_steps', int(1e6))
   kwargs.setdefault('num_workers', 16)
   config = Config()
   config.merge(kwargs)
@@ -387,11 +397,11 @@ def oc_continuous(**kwargs):
 def ppoc_continuous(**kwargs):
   generate_tag(kwargs)
   kwargs.setdefault('log_level', 0)
-  kwargs.setdefault('num_o', 4)
+  kwargs.setdefault('num_o', 10)
   kwargs.setdefault('gate', nn.ReLU())
   kwargs.setdefault('entropy_weight', 0.01)
   kwargs.setdefault('tasks', False)
-  kwargs.setdefault('max_steps', int(2e6))
+  kwargs.setdefault('max_steps', int(1e6))
   config = Config()
   config.merge(kwargs)
 
@@ -436,12 +446,12 @@ def ppoc_continuous(**kwargs):
 def ahp_ppo_continuous(**kwargs):
   generate_tag(kwargs)
   kwargs.setdefault('log_level', 0)
-  kwargs.setdefault('num_o', 4)
+  kwargs.setdefault('num_o', 10)
   kwargs.setdefault('gate', nn.ReLU())
   kwargs.setdefault('opt_ep', 10)
   kwargs.setdefault('entropy_weight', 0.01)
   kwargs.setdefault('tasks', False)
-  kwargs.setdefault('max_steps', int(2e6))
+  kwargs.setdefault('max_steps', int(1e6))
   config = Config()
   config.merge(kwargs)
 
@@ -485,10 +495,10 @@ def ahp_ppo_continuous(**kwargs):
 def iopg_continuous(**kwargs):
   generate_tag(kwargs)
   kwargs.setdefault('log_level', 0)
-  kwargs.setdefault('num_o', 4)
+  kwargs.setdefault('num_o', 10)
   kwargs.setdefault('gate', nn.ReLU())
   kwargs.setdefault('tasks', False)
-  kwargs.setdefault('max_steps', int(2e6))
+  kwargs.setdefault('max_steps', int(1e6))
   kwargs.setdefault('num_workers', 16)
   config = Config()
   config.merge(kwargs)
@@ -527,14 +537,14 @@ def iopg_continuous(**kwargs):
 def visualize_a_squared_c(**kwargs):
   generate_tag(kwargs)
   kwargs.setdefault('log_level', 0)
-  kwargs.setdefault('num_o', 4)
+  kwargs.setdefault('num_o', 10)
   kwargs.setdefault('learning', 'all')
   kwargs.setdefault('gate', nn.ReLU())
   kwargs.setdefault('freeze_v', False)
   kwargs.setdefault('opt_ep', 5)
   kwargs.setdefault('entropy_weight', 0.01)
   kwargs.setdefault('tasks', False)
-  kwargs.setdefault('max_steps', int(2e6))
+  kwargs.setdefault('max_steps', int(1e6))
   kwargs.setdefault('beta_weight', 0)
   config = Config()
   config.merge(kwargs)
@@ -605,5 +615,5 @@ if __name__ == '__main__':
   set_one_thread()
   select_device(cf.cudaid)
 
-  batch_dm(cf)
-  # batch_mujoco(cf)
+  # batch_dm(cf)
+  batch_mujoco(cf)
