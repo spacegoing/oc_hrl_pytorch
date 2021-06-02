@@ -22,7 +22,11 @@ class Plotter:
       'PPOC': 'darkred',
       'OC': 'lime',
       'IOPG': 'lightblue',
+      'Option2Vec': '#CE1126',
       'SA+PPO': '#CE1126',
+      'SA+Embed': '#CE1126',
+      'SA+Local': 'coral',
+      'DAC-OneStep': 'teal',
   }
 
   RETURN_TRAIN = 'episodic_return_train'
@@ -156,7 +160,7 @@ class Plotter:
     import matplotlib.pyplot as plt
     l = len(games)
     row = 1
-    col = 4
+    col = 1
     plt.figure(figsize=(5 * col, 5 * row))
     plt.rc('text', usetex=True)
     plt.tight_layout()
@@ -167,6 +171,9 @@ class Plotter:
         color = self.COLORS[label]
         log_path_list = self.filter_log_path_list(
             pattern='.*%s.*%s' % (game, p), **kwargs)
+        if len(log_path_list) == 0:
+          print('#'*200+'\n Empty_Entry_Error: Model: %s, Game: %s\n' % (p, game)+ '#'*200 )
+          continue
         x, y = self.load_results(log_path_list, **kwargs)
         if kwargs['downsample']:
           indices = np.linspace(0,
@@ -188,7 +195,9 @@ class Plotter:
       plt.xlabel('Steps', fontsize=30)
       if not i:
         plt.ylabel('Episode Return', fontsize=30)
-        plt.legend(fontsize=10, frameon=False)
+        handles, labels = plt.gca().get_legend_handles_labels()
+        # plt.legend(handles[::-1], labels[::-1], loc=2, fontsize=20, frameon=False)
+        plt.legend(handles[::-1], labels[::-1], loc=2, fontsize=15, frameon=True,framealpha=0.5)
 
 
 def plot_mujoco(FOLDER, root, figname, type='mean'):
@@ -196,9 +205,9 @@ def plot_mujoco(FOLDER, root, figname, type='mean'):
   games = [
       ## dac 4 games
       'HalfCheetah-v2',
-      'Swimmer-v2',
-      'HumanoidStandup-v2',
-      'Reacher-v2',
+      # 'Swimmer-v2',
+      # 'HumanoidStandup-v2',
+      # 'Reacher-v2',
       # ## Finite
       # 'Walker2d-v2',
       # 'Hopper-v2',
@@ -209,24 +218,39 @@ def plot_mujoco(FOLDER, root, figname, type='mean'):
   ]
 
   patterns = [
-      # 'remark_PPO',
-      'remark_ASC-PPO',
-      'remark_AHP',
       'remark_PPOC',
       'remark_OC',
       'remark_IOPG',
+      # 'DAC-NoTerm',
+      # 'SingleNetHead',
+      'remark_AHP',
+      'remark_PPO',
+      'remark_ASC-PPO',
       'nhead1_dm40_',
   ]
 
   labels = [
-      # 'PPO',
-      'DAC+PPO',
-      'AHP+PPO',
       'PPOC',
       'OC',
       'IOPG',
-      'SA+PPO',
+      # 'DAC-NoTerm',
+      # 'SA+Local',
+      'AHP+PPO',
+      'PPO',
+      'DAC+PPO',
+      'Option2Vec',
   ]
+
+  # # Embed-Triple 4
+  # patterns = [
+  #     'DAC-NoTerm',
+  #     'nhead1_dm40_',
+  # ]
+
+  # labels = [
+  #     'DAC-OneStep',
+  #     'Option2Vec',
+  # ]
 
   plotter.plot_games(
       games=games,
@@ -251,8 +275,9 @@ def plot_mujoco(FOLDER, root, figname, type='mean'):
 if __name__ == '__main__':
   mkdir('images')
   FOLDER = '/home/chli3934/ubCodeLab/oc_hrl_pytorch/images'
-  root = '/home/chli3934/Downloads/do_tf_log_10'
-  figname = '10_Options'
+  # root = '/home/chli3934/Downloads/do_tf_log_10'
+  root = './final_singlenet'
+  figname = 'Inftest'
   # plot_dm(type='mean')
   plot_mujoco(FOLDER, root, figname, type='mean')
   # plot_ablation(type='mean')
